@@ -58,12 +58,12 @@ SELF = os.path.abspath(__file__)
 
 # Every variable this plugin reads is spelled out here, never built at run time.
 _SETTINGS = {
-    "LAYOUT": ("CC_MICRO_MANAGE_LAYOUT", "CLAUDE_PLUGIN_OPTION_LAYOUT"),
-    "LINGER": ("CC_MICRO_MANAGE_LINGER", "CLAUDE_PLUGIN_OPTION_LINGER"),
-    "MESSAGE_KEY": ("CC_MICRO_MANAGE_KEY", "CLAUDE_PLUGIN_OPTION_MESSAGE_KEY"),
-    "RELAY": ("CC_MICRO_MANAGE_RELAY", "CLAUDE_PLUGIN_OPTION_RELAY"),
-    "BORDERS": ("CC_MICRO_MANAGE_BORDERS", "CLAUDE_PLUGIN_OPTION_BORDERS"),
-    "SKIP": ("CC_MICRO_MANAGE_SKIP", "CLAUDE_PLUGIN_OPTION_SKIP"),
+    "LAYOUT": lambda: (os.environ.get("CC_MICRO_MANAGE_LAYOUT"), os.environ.get("CLAUDE_PLUGIN_OPTION_LAYOUT")),
+    "LINGER": lambda: (os.environ.get("CC_MICRO_MANAGE_LINGER"), os.environ.get("CLAUDE_PLUGIN_OPTION_LINGER")),
+    "MESSAGE_KEY": lambda: (os.environ.get("CC_MICRO_MANAGE_KEY"), os.environ.get("CLAUDE_PLUGIN_OPTION_MESSAGE_KEY")),
+    "RELAY": lambda: (os.environ.get("CC_MICRO_MANAGE_RELAY"), os.environ.get("CLAUDE_PLUGIN_OPTION_RELAY")),
+    "BORDERS": lambda: (os.environ.get("CC_MICRO_MANAGE_BORDERS"), os.environ.get("CLAUDE_PLUGIN_OPTION_BORDERS")),
+    "SKIP": lambda: (os.environ.get("CC_MICRO_MANAGE_SKIP"), os.environ.get("CLAUDE_PLUGIN_OPTION_SKIP")),
 }
 
 
@@ -72,10 +72,10 @@ def _opt(name, default, legacy=None):
     plugin option the user set in /config (CLAUDE_PLUGIN_OPTION_<NAME>), then
     the default. Only hook processes see these; panes get what they need as
     arguments or state files."""
-    env_name, option_name = _SETTINGS[name]
-    v = os.environ.get(env_name)
+    env_value, option_value = _SETTINGS[name]()
+    v = env_value
     if v is None or v == "":
-        v = os.environ.get(option_name)
+        v = option_value
     if v is None or str(v).strip() == "":
         return default
     return str(v).strip()
@@ -445,8 +445,7 @@ def _debug(event, data):
     if os.environ.get("CC_MICRO_MANAGE_DEBUG") == "1":
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(os.path.join(STATE_DIR, "debug.jsonl"), "a") as f:
-            names = [n for pair in _SETTINGS.values() for n in pair]
-            opts = {n: os.environ[n] for n in names if n in os.environ}
+            opts = {n: list(read()) for n, read in _SETTINGS.items()}   # [env var, plugin option]
             f.write(json.dumps({"event": event, "payload": data, "TMUX_PANE": os.environ.get("TMUX_PANE"),
                                 "options": opts}) + "\n")
 
