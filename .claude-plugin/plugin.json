@@ -1,6 +1,6 @@
 {
   "name": "cc-micro-manage",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Micro-manage your Claude Code subagents: each one gets a live tmux pane (stacked FIFO, nested ones split their parent) with a message box to steer it.",
   "author": {
     "name": "Debanjan Ganguly"

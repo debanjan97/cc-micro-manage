@@ -195,10 +195,15 @@ def cmd_send(pane):
     _tmux("display-message", err or "✉ queued, delivered when the subagent wraps up")
 
 
+BACKGROUND_NOTE = "read-only · background subagent (messaging needs foreground)"
+
+
 def _queue(key, text):
     """Append a message to an agent's inbox. Returns an error string or None."""
     if os.path.exists(os.path.join(STATE_DIR, key + ".done")):
         return "That subagent has already finished; message not sent."
+    if _read(os.path.join(STATE_DIR, key + ".shape")) == "background":
+        return BACKGROUND_NOTE
     with open(os.path.join(STATE_DIR, key + ".inbox"), "a") as f:
         f.write(json.dumps({"ts": time.time(), "text": text}) + "\n")
     return None
@@ -211,7 +216,8 @@ def cmd_stop_hook(data):
     msgs = _inbox(key)
     n = _delivered(key)
     new = msgs[n:]
-    if new:
+    background = _meta_now(data.get("transcript_path"), data["agent_id"]).get("requestShape") == "background"
+    if new and not background:
         _write(os.path.join(STATE_DIR, key + ".delivered"), str(len(msgs)))
         lines = "\n".join(f"- {m}" for m in new)
         print(json.dumps({
@@ -298,6 +304,18 @@ def _meta(data):
     return {}
 
 
+def _meta_now(transcript, agent_id):
+    t = transcript or ""
+    bare = agent_id[len("agent-"):] if agent_id.startswith("agent-") else agent_id
+    if not t:
+        return {}
+    try:
+        with open(os.path.join(t[:-6] if t.endswith(".jsonl") else t, "subagents", f"agent-{bare}.meta.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
 def cmd_place():
     data = json.load(sys.stdin)
     agent_id, agent_type = data["agent_id"], data["agent_type"]
@@ -379,6 +397,8 @@ def cmd_place():
         except Exception:
             pass
         _write(state, pane)
+        if meta.get("requestShape"):
+            _write(os.path.join(STATE_DIR, key + ".shape"), meta["requestShape"])
         try:  # the pane itself says which agent it shows (tmux reuses pane ids across restarts)
             _tmux("set-option", "-p", "-t", pane, "@cc_micro_manage_agent", agent_id)
         except Exception:
@@ -535,6 +555,7 @@ class _Screen:
         self.esc = False
         self.history = collections.deque(maxlen=400)   # replayed on resize
         self.status = "type a message for this agent · Enter to send"
+        self.input_enabled = True
         self._dec = codecs.getincrementaldecoder("utf-8")("replace")
         try:
             self.fd = sys.stdin.fileno() if sys.stdin and sys.stdin.isatty() else None
@@ -580,7 +601,7 @@ class _Screen:
         w, R, cols = self.real.write, self.rows, self.cols
         label = f"─ {self.status} "
         w(f"\033[{R - 1};1H\033[2K{C['dim']}{(label + '─' * cols)[:cols]}{C['r']}")
-        if self.finished:
+        if self.finished or not self.input_enabled:
             w(f"\033[{R};1H\033[2K")
         else:
             room = max(cols - 5, 1)
@@ -628,6 +649,8 @@ class _Screen:
                 continue
             if ch == "\x1b":
                 self.esc = True
+            elif not self.input_enabled and not self.finished:
+                continue
             elif ch in "\r\n":
                 if self.finished:
                     self.enter = True
@@ -679,6 +702,7 @@ def cmd_view(argv):
         screen.set_status(err or "✉ queued · type another, or wait for it to wrap up")
 
     screen = _Screen(on_send)
+    shape_file = os.path.join(STATE_DIR, key + ".shape")
     try:
         print(f"{C['b']}{C['yel']}● {agent_type}{C['r']} {C['dim']}{agent_id}{C['r']}\n")
         sys.stdout.flush()
@@ -709,6 +733,7 @@ def cmd_view(argv):
             last_data = last_check = time.time()
             max_idle = 30 * 60  # no transcript activity for 30 min -> give up
             seen_q = seen_d = 0
+            shape_checked = False
             with open(path) as f:
                 while True:
                     chunk = f.readline()
@@ -733,9 +758,17 @@ def cmd_view(argv):
                         idle_since = idle_since or time.time()
                         if time.time() - idle_since > 1.0:
                             break
+                    if not shape_checked and _read(shape_file):
+                        shape_checked = True
+                        if _read(shape_file) == "background":
+                            screen.input_enabled = False
+                            screen.set_status(BACKGROUND_NOTE)
                     now = time.time()
                     if now - last_check > 3:
                         last_check = now
+                        # backstop: Claude Code marks the agent finished in its meta file
+                        if _meta_now(args.get("transcript"), agent_id).get("finished") and now - last_data > 2:
+                            break
                         if parent and not _alive(parent):
                             print(f"\n{C['dim']}Claude pane closed; stopping.{C['r']}")
                             linger = min(linger, 2) if linger >= 0 else 2
@@ -750,7 +783,7 @@ def cmd_view(argv):
         if pending > 0:
             print(f"{C['red']}✉ {pending} message(s) arrived too late to deliver{C['r']}")
         sys.stdout.flush()
-        for suffix in (".done", ".pane", ".inbox", ".delivered"):
+        for suffix in (".done", ".pane", ".inbox", ".delivered", ".shape"):
             try:
                 os.remove(os.path.join(STATE_DIR, key + suffix))
             except OSError:
