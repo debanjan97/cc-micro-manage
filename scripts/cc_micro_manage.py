@@ -606,6 +606,65 @@ def _candidates(args):
     return out
 
 
+# ── footer stats: model · effort · tokens · elapsed ───────────────────
+def _pretty_model(m):
+    mm = re.fullmatch(r"claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8})?", m or "")
+    return f"{mm.group(1).capitalize()} {mm.group(2)}.{mm.group(3)}" if mm else (m or "")
+
+
+def _k(n):
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def _ts(v):
+    try:
+        import datetime
+        return datetime.datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+class _Stats:
+    def __init__(self):
+        self.model = self.effort = ""
+        self.context = self.out = 0
+        self.t0 = self.t_end = None
+
+    def update(self, line):
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            return
+        if self.t0 is None:
+            self.t0 = _ts(ev.get("timestamp"))
+        if ev.get("effort"):
+            self.effort = str(ev["effort"])
+        msg = ev.get("message") if isinstance(ev.get("message"), dict) else {}
+        if ev.get("type") == "assistant":
+            if msg.get("model"):
+                self.model = msg["model"]
+            u = msg.get("usage") or {}
+            if u:
+                self.context = (u.get("input_tokens") or 0) + (u.get("cache_read_input_tokens") or 0) \
+                    + (u.get("cache_creation_input_tokens") or 0)
+                self.out += u.get("output_tokens") or 0
+
+    def line(self):
+        parts = []
+        if self.model:
+            parts.append(_pretty_model(self.model))
+        if self.effort:
+            parts.append(f"{self.effort} effort")
+        if self.context:
+            parts.append(f"{_k(self.context)} context")
+        if self.out:
+            parts.append(f"{_k(self.out)} out")
+        if self.t0:
+            secs = int((self.t_end or time.time()) - self.t0)
+            parts.append(f"{secs // 60}m {secs % 60:02d}s" if secs >= 60 else f"{secs}s")
+        return " · ".join(parts)
+
+
 class _Screen:
     """Pane UI: output scrolls in the top region; the last line is a message box.
 
@@ -622,6 +681,7 @@ class _Screen:
         self.pending = ""   # partial output line
         self.esc = False
         self.history = collections.deque(maxlen=400)   # replayed on resize
+        self.footer = ""
         self.status = "type a message for this agent · Enter to send"
         self.input_enabled = True
         self._dec = codecs.getincrementaldecoder("utf-8")("replace")
@@ -629,7 +689,7 @@ class _Screen:
             self.fd = sys.stdin.fileno() if sys.stdin and sys.stdin.isatty() else None
         except (ValueError, OSError):
             self.fd = None
-        if self.fd is None or self._size()[1] < 6:
+        if self.fd is None or self._size()[1] < 7:
             return
         import termios
         self._termios = termios
@@ -658,9 +718,9 @@ class _Screen:
     def _resize(self):
         self.cols, self.rows = self._size()
         # clear (tmux reflow leaves fragments of old lines), then replay the tail
-        self.real.write(f"\033[r\033[2J\033[1;{self.rows - 2}r")
-        for line in list(self.history)[-(self.rows - 2):]:
-            self.real.write(f"\033[{self.rows - 2};1H\n{line}")
+        self.real.write(f"\033[r\033[2J\033[1;{self.rows - 3}r")
+        for line in list(self.history)[-(self.rows - 3):]:
+            self.real.write(f"\033[{self.rows - 3};1H\n{line}")
         self._chrome()
 
     def _chrome(self):
@@ -668,19 +728,21 @@ class _Screen:
             return
         w, R, cols = self.real.write, self.rows, self.cols
         label = f"─ {self.status} "
-        w(f"\033[{R - 1};1H\033[2K{C['dim']}{(label + '─' * cols)[:cols]}{C['r']}")
+        w(f"\033[{R - 2};1H\033[2K{C['dim']}{(label + '─' * cols)[:cols]}{C['r']}")
+        # footer first, input last, so the cursor ends up in the input box
+        w(f"\033[{R};1H\033[2K{C['dim']}  {self.footer[:max(cols - 3, 0)]}{C['r']}")
         if self.finished or not self.input_enabled:
-            w(f"\033[{R};1H\033[2K")
+            w(f"\033[{R - 1};1H\033[2K")
         else:
             room = max(cols - 5, 1)
             shown = self.buf[-room:]
-            w(f"\033[{R};1H\033[2K{C['yel']}✉ ›{C['r']} {shown}")
+            w(f"\033[{R - 1};1H\033[2K{C['yel']}✉ ›{C['r']} {shown}")
         self.real.flush()
 
     def _emit(self, line):
         self.history.append(line)
         # cursor to bottom of the scroll region, newline scrolls it, then the text
-        self.real.write(f"\033[{self.rows - 2};1H\n{line}")
+        self.real.write(f"\033[{self.rows - 3};1H\n{line}")
         self._chrome()
 
     # -- file-like, so print() works unchanged
@@ -770,6 +832,7 @@ def cmd_view(argv):
         screen.set_status(err or "✉ queued · type another, or wait for it to wrap up")
 
     screen = _Screen(on_send)
+    stats = _Stats()
     shape_file = os.path.join(STATE_DIR, key + ".shape")
     try:
         print(f"{C['b']}{C['yel']}● {agent_type}{C['r']} {C['dim']}{agent_id}{C['r']}\n")
@@ -802,18 +865,25 @@ def cmd_view(argv):
             max_idle = 30 * 60  # no transcript activity for 30 min -> give up
             seen_q = seen_d = 0
             shape_checked = False
+            last_footer = 0
             with open(path) as f:
                 while True:
                     chunk = f.readline()
                     if chunk:
                         buf += chunk
                         if buf.endswith("\n"):
+                            stats.update(buf)
+                            screen.footer = stats.line()
                             _render(buf, first)
                             first = False
                             buf = ""
                         idle_since = None
                         last_data = time.time()
                         continue
+                    if time.time() - last_footer >= 1:   # keep the elapsed time ticking
+                        last_footer = time.time()
+                        screen.footer = stats.line()
+                        screen._chrome()
                     q, d = _inbox(key), _delivered(key)
                     for m in q[seen_q:]:
                         print(f"{C['yel']}✉ you: {m}{C['r']} {C['dim']}(queued — delivered when it wraps up){C['r']}")
@@ -846,6 +916,8 @@ def cmd_view(argv):
                             break
                     screen.poll(0.15)
 
+        stats.t_end = time.time()
+        screen.footer = stats.line()
         print(f"\n{C['green']}{C['b']}✓ {agent_type} finished{C['r']}")
         pending = len(_inbox(key)) - _delivered(key)
         if pending > 0:

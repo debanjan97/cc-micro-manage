@@ -33,6 +33,7 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 ## Features
 
 - 🪟 **One live pane per subagent.** Each pane shows the subagent's task, its messages, its thinking, and every tool call with a short result.
+- 📊 **Footer like Claude Code's.** Each pane shows the model, effort level, context size, output tokens and elapsed time for its agent.
 - 📚 **FIFO stack.** Panes stack on the right, oldest on top, while Claude keeps the left 55%. When an agent finishes, its pane closes and the rest move up evenly.
 - 🌳 **Nested agents split their parent.** A subagent's own subagents open beside *its* pane, following the same rule at every level, up to Claude Code's depth limit of 5.
 - 💬 **Message box.** Type into a foreground subagent's pane to steer it before it finishes (see [Messaging](#messaging-a-subagent)).
