@@ -12,6 +12,7 @@
   "documentationUrl": "https://github.com/debanjan97/cc-micro-manage#readme",
   "supportUrl": "https://github.com/debanjan97/cc-micro-manage/issues",
   "icon": "./.claude-plugin/icon.png",
+  "privacyPolicyUrl": "https://github.com/debanjan97/cc-micro-manage/blob/main/PRIVACY.md",
   "license": "MIT",
   "keywords": [
     "tmux",
