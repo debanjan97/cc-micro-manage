@@ -26,6 +26,7 @@ Env knobs (settings.json "env" block or your shell):
   CC_MICRO_MANAGE_SKIP    comma-separated agent types to ignore
   CC_MICRO_MANAGE_OFF     1 = disable
   CC_MICRO_MANAGE_KEY     tmux key (after your prefix) to message the focused subagent (default a)
+  CC_MICRO_MANAGE_BORDERS  0 = don't turn on pane-border titles in agent windows
   CC_MICRO_MANAGE_DEBUG   1 = log hook payloads to /tmp/cc-micro-manage-<uid>/debug.jsonl
 """
 import codecs
@@ -116,12 +117,80 @@ def _col(claude_pane):
     return [p for p in _read(_col_file(claude_pane)).split() if _alive(p)]
 
 
+# Border label for agent panes: coloured dot (state) + the agent's purpose.
+# Other panes keep a neutral label. Only applied to windows we put agent panes
+# in, and only if the user hasn't turned on pane borders there themselves.
+BORDER_FORMAT = (" #{?#{@ccmm_title},#[fg=#{@ccmm_color}]●#[default] #{@ccmm_title},"
+                 "#{@ccmm_label}} ")
+STATE_COLOR = {"running": "yellow", "finished": "green", "error": "red"}
+
+
+def _borders_on(pane):
+    if os.environ.get("CC_MICRO_MANAGE_BORDERS", "1") == "0":
+        return
+    win = _tmux("display-message", "-p", "-t", pane, "#{window_id}")
+    try:
+        ours = _tmux("show-options", "-w", "-v", "-t", win, "@ccmm_borders")
+    except Exception:
+        ours = ""
+    if ours:
+        return
+    try:
+        current = _tmux("show-options", "-w", "-v", "-t", win, "pane-border-status")
+    except Exception:
+        current = ""
+    if not current:   # not set on this window: inherits the global value
+        current = _tmux("show-options", "-g", "-v", "pane-border-status")
+    if current not in ("", "off"):
+        return        # user already shows borders: respect their format
+    _tmux("set-option", "-w", "-t", win, "pane-border-status", "top")
+    _tmux("set-option", "-w", "-t", win, "pane-border-format", BORDER_FORMAT)
+    _tmux("set-option", "-w", "-t", win, "@ccmm_borders", "1")
+    claude = os.environ.get("TMUX_PANE")
+    if claude:
+        try:
+            _tmux("set-option", "-p", "-t", claude, "@ccmm_label", "claude")
+        except Exception:
+            pass
+
+
+def _borders_off_if_idle(win):
+    """Restore the window once its last agent pane is gone."""
+    try:
+        if not _tmux("show-options", "-w", "-v", "-t", win, "@ccmm_borders"):
+            return
+        titles = _tmux("list-panes", "-t", win, "-F", "#{@ccmm_title}").split("\n")
+    except Exception:
+        return
+    if any(t.strip() for t in titles):
+        return
+    for opt in ("pane-border-status", "pane-border-format", "@ccmm_borders"):
+        try:
+            _tmux("set-option", "-w", "-u", "-t", win, opt)
+        except Exception:
+            pass
+    try:
+        for pid in _tmux("list-panes", "-t", win, "-F", "#{pane_id}").split():
+            _tmux("set-option", "-p", "-u", "-t", pid, "@ccmm_label")
+    except Exception:
+        pass
+
+
+def _set_state(pane, state):
+    try:
+        _tmux("set-option", "-p", "-t", pane, "@ccmm_color", STATE_COLOR.get(state, "yellow"))
+    except Exception:
+        pass
+
+
 def _relayout(claude_pane):
     """Claude on the left, agent panes stacked evenly on the right — but only
     when the window holds nothing except Claude + its agent panes, so we never
     rearrange panes you created yourself."""
     agents = _col(claude_pane)
     _write(_col_file(claude_pane), "\n".join(agents))
+    if not agents and _alive(claude_pane):
+        _borders_off_if_idle(_tmux("display-message", "-p", "-t", claude_pane, "#{window_id}"))
     if not agents or not _alive(claude_pane):
         return
     win = _tmux("display-message", "-p", "-t", claude_pane, "#{window_id}")
@@ -328,6 +397,9 @@ def cmd_place():
     meta = _meta(data)
     parent_id = meta.get("parentAgentId") or ""
     depth = int(meta.get("spawnDepth") or 1)
+    # what the agent is for (Claude's own description), e.g. "Scout: describe every .go file"
+    purpose = re.sub(r"\s+", " ", str(meta.get("description") or "")).strip()
+    title = ("↳ " * (depth - 1)) + (purpose or agent_type) + f" · {agent_id[:6]}"
 
     viewer = " ".join(shlex.quote(x) for x in [
         sys.executable, SELF, "view",
@@ -338,6 +410,7 @@ def cmd_place():
         # tmux panes don't inherit Claude's env, so forward the setting explicitly
         "--linger", os.environ.get("CC_MICRO_MANAGE_LINGER", "10"),
         "--parent-pane", claude_pane,
+        "--title", purpose,
     ])
 
     with _Lock("tmux"):
@@ -393,7 +466,10 @@ def cmd_place():
                 _write(win_file, win)
 
         try:
-            _tmux("select-pane", "-t", pane, "-T", ("↳ " * (depth - 1)) + f"{agent_type} · {agent_id[:8]}")
+            _tmux("select-pane", "-t", pane, "-T", title)
+            _tmux("set-option", "-p", "-t", pane, "@ccmm_title", title)
+            _set_state(pane, "running")
+            _borders_on(pane)
         except Exception:
             pass
         _write(state, pane)
@@ -491,6 +567,28 @@ def _md(text, max_lines=None):
     return "\n".join(lines)
 
 
+def _task(text, first):
+    """The task prompt can be pages long; show its gist (~3 lines) and move on."""
+    flat = re.sub(r"\s+", " ", text).strip()
+    limit = 240 if first else 400
+    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+
+
+def _state_of(line):
+    """running / error from a transcript line (None if it says nothing)."""
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        return None
+    c = (ev.get("message") or {}).get("content") if isinstance(ev.get("message"), dict) else None
+    if not isinstance(c, list):
+        return None
+    results = [b for b in c if isinstance(b, dict) and b.get("type") == "tool_result"]
+    if results:
+        return "error" if any(b.get("is_error") for b in results) else "running"
+    return None
+
+
 def _trunc(s, n):
     s = s if isinstance(s, str) else json.dumps(s, ensure_ascii=False)
     return s if len(s) <= n else s[: n - 1] + "…"
@@ -550,7 +648,7 @@ def _render(line, first):
             return
         if role == "user":
             label = "task" if first else "user"
-            print(f"{C['mag']}{C['b']}▶ {label}{C['r']} {C['dim']}{_trunc(content.strip(), 800)}{C['r']}\n")
+            print(f"{C['mag']}{C['b']}▶ {label}{C['r']} {C['dim']}{_task(content, first)}{C['r']}\n")
         else:
             print(_md(content) + "\n")
         return
@@ -563,7 +661,7 @@ def _render(line, first):
             text = _clean(block["text"])
             if role == "user":
                 label = "task" if first else "user"
-                print(f"{C['mag']}{C['b']}▶ {label}{C['r']} {C['dim']}{_trunc(text, 800)}{C['r']}\n")
+                print(f"{C['mag']}{C['b']}▶ {label}{C['r']} {C['dim']}{_task(text, first)}{C['r']}\n")
             else:
                 print(_md(text) + "\n")
         elif t == "thinking" and block.get("thinking", "").strip():
@@ -649,6 +747,22 @@ class _Stats:
                     + (u.get("cache_creation_input_tokens") or 0)
                 self.out += u.get("output_tokens") or 0
 
+    def variants(self):
+        """Full, medium and tiny footers; the screen shows the widest that fits."""
+        full = self.line()
+        model = _pretty_model(self.model)
+        el = self._elapsed()
+        mid = " · ".join(x for x in (model, f"{_k(self.context)} ctx" if self.context else "",
+                                     f"{_k(self.out)} out" if self.out else "", el) if x)
+        tiny = " · ".join(x for x in (f"{_k(self.context)}" if self.context else "", el) if x)
+        return [full, mid, tiny]
+
+    def _elapsed(self):
+        if not self.t0:
+            return ""
+        secs = int((self.t_end or time.time()) - self.t0)
+        return f"{secs // 60}m {secs % 60:02d}s" if secs >= 60 else f"{secs}s"
+
     def line(self):
         parts = []
         if self.model:
@@ -730,7 +844,10 @@ class _Screen:
         label = f"─ {self.status} "
         w(f"\033[{R - 2};1H\033[2K{C['dim']}{(label + '─' * cols)[:cols]}{C['r']}")
         # footer first, input last, so the cursor ends up in the input box
-        w(f"\033[{R};1H\033[2K{C['dim']}  {self.footer[:max(cols - 3, 0)]}{C['r']}")
+        room = max(cols - 3, 0)
+        options = self.footer if isinstance(self.footer, list) else [self.footer]
+        text = next((v for v in options if len(v) <= room), (options[-1] if options else ""))[:room]
+        w(f"\033[{R};1H\033[2K{C['dim']}  {text}{C['r']}")
         if self.finished or not self.input_enabled:
             w(f"\033[{R - 1};1H\033[2K")
         else:
@@ -833,9 +950,13 @@ def cmd_view(argv):
 
     screen = _Screen(on_send)
     stats = _Stats()
+    my_pane = os.environ.get("TMUX_PANE")
+    pane_state = "running"
     shape_file = os.path.join(STATE_DIR, key + ".shape")
     try:
-        print(f"{C['b']}{C['yel']}● {agent_type}{C['r']} {C['dim']}{agent_id}{C['r']}\n")
+        purpose = args.get("title") or ""
+        head = f"{purpose} {C['dim']}({agent_type}){C['r']}" if purpose else agent_type
+        print(f"{C['b']}{C['yel']}● {C['r']}{C['b']}{head}{C['r']} {C['dim']}{agent_id[:8]}{C['r']}\n")
         sys.stdout.flush()
 
         path = None
@@ -872,8 +993,12 @@ def cmd_view(argv):
                     if chunk:
                         buf += chunk
                         if buf.endswith("\n"):
+                            st = _state_of(buf)
+                            if st and st != pane_state and my_pane:
+                                pane_state = st
+                                _set_state(my_pane, st)
                             stats.update(buf)
-                            screen.footer = stats.line()
+                            screen.footer = stats.variants()
                             _render(buf, first)
                             first = False
                             buf = ""
@@ -882,7 +1007,7 @@ def cmd_view(argv):
                         continue
                     if time.time() - last_footer >= 1:   # keep the elapsed time ticking
                         last_footer = time.time()
-                        screen.footer = stats.line()
+                        screen.footer = stats.variants()
                         screen._chrome()
                     q, d = _inbox(key), _delivered(key)
                     for m in q[seen_q:]:
@@ -917,8 +1042,10 @@ def cmd_view(argv):
                     screen.poll(0.15)
 
         stats.t_end = time.time()
-        screen.footer = stats.line()
-        print(f"\n{C['green']}{C['b']}✓ {agent_type} finished{C['r']}")
+        if my_pane:
+            _set_state(my_pane, "finished")
+        screen.footer = stats.variants()
+        print(f"\n{C['green']}{C['b']}✓ {(args.get('title') or agent_type)} finished{C['r']}")
         pending = len(_inbox(key)) - _delivered(key)
         if pending > 0:
             print(f"{C['red']}✉ {pending} message(s) arrived too late to deliver{C['r']}")

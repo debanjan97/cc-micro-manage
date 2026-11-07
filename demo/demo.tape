@@ -14,7 +14,7 @@ Set TypingSpeed 10ms
 Hide
 Type "cd /tmp/acme-api && clear"
 Enter
-Type `tmux -L ccmm -f /dev/null new-session -s demo "env -u ANTHROPIC_API_KEY COLORTERM=truecolor CC_MICRO_MANAGE_LINGER=3 claude --model haiku --allowedTools Bash Read Grep Glob Agent" \; set -g status off \; set -g pane-border-status top \; set -g pane-border-format " #{?#{m:*·*,#{pane_title}},#{pane_title},claude} "`
+Type `tmux -L ccmm -f /dev/null new-session -s demo "env -u ANTHROPIC_API_KEY COLORTERM=truecolor CC_MICRO_MANAGE_LINGER=3 claude --model haiku --allowedTools Bash Read Grep Glob Agent" \; set -g status off`
 Enter
 Sleep 7s
 # folder-trust prompt defaults to "No, exit": pick "Yes, I trust this folder"

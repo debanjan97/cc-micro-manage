@@ -33,6 +33,7 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 ## Features
 
 - 🪟 **One live pane per subagent.** Each pane shows the subagent's task, its messages, its thinking, and every tool call with a short result.
+- 🏷️ **Panes named by purpose.** Each pane's border shows what the agent is for, such as `● Scout: describe every .go file`. The dot is yellow while it runs, red after a failed tool call, and green when it finishes.
 - 📊 **Footer like Claude Code's.** Each pane shows the model, effort level, context size, output tokens and elapsed time for its agent.
 - 📚 **FIFO stack.** Panes stack on the right, oldest on top, while Claude keeps the left 55%. When an agent finishes, its pane closes and the rest move up evenly.
 - 🌳 **Nested agents split their parent.** A subagent's own subagents open beside *its* pane, following the same rule at every level, up to Claude Code's depth limit of 5.
@@ -120,6 +121,7 @@ Set these in the `env` block of `~/.claude/settings.json`, or export them before
 | `CC_MICRO_MANAGE_LAYOUT` | `split` | `split`: a column beside Claude, as in the GIF. `window`: tile all subagent panes in a separate `agents` tmux window. |
 | `CC_MICRO_MANAGE_LINGER` | `10` | Seconds a pane stays open after its agent finishes. `-1` keeps it open until you press Enter. |
 | `CC_MICRO_MANAGE_KEY` | `a` | Key after your tmux prefix that opens the message prompt. `none` disables it. An existing binding that isn't ours is never overwritten. |
+| `CC_MICRO_MANAGE_BORDERS` | `1` | `0` stops the plugin turning on pane-border titles. They're only added to windows with agent panes, and only if you haven't enabled borders yourself. They switch off again when the last agent finishes. |
 | `CC_MICRO_MANAGE_SKIP` | none | Comma-separated agent types to ignore, e.g. `Explore,statusline-setup` |
 | `CC_MICRO_MANAGE_OFF` | none | `1` disables the plugin without uninstalling it. |
 | `CC_MICRO_MANAGE_DEBUG` | none | `1` logs hook payloads to `/tmp/cc-micro-manage-<uid>/debug.jsonl`. |

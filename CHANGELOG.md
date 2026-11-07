@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-07
+
+### Added
+- **Pane titles show each agent's purpose**, taken from Claude Code's own description of the agent (for example `● Scout: describe every .go file`), instead of `general-purpose · <id>`.
+- **Status colours.** The dot in each pane's border is yellow while the agent runs, red after a failed tool call, and green when it finishes.
+- Border titles are switched on automatically, but only in windows with agent panes and only if you haven't enabled borders yourself. They're restored when the last agent finishes. Set `CC_MICRO_MANAGE_BORDERS=0` to opt out.
+
+### Changed
+- The task text at the top of each pane is cut to about two lines, so the agent's work appears sooner.
+- The footer adapts to the pane's width: full, then `Haiku 5.5 · 59.3k ctx · 4.0k out · 8s`, then just context and time.
+
 ## [0.3.3] - 2026-11-07
 
 ### Added
