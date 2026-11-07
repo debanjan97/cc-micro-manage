@@ -28,8 +28,8 @@ Everything lives in `scripts/cc_micro_manage.py`:
 | `start` / `place` | `SubagentStart` hook | open the pane (detached so the hook returns instantly) |
 | `stop` | `SubagentStop` hook | deliver queued messages or mark the agent done |
 | `post-agent` | `PostToolUse` on `Agent`/`Task` | tell the calling agent what the user sent |
-| `view` | the pane | tail and render the transcript, message box |
-| `send` | `prefix + a` binding | queue a message typed in tmux's prompt |
+| `view` | the pane | tail and render the transcript, message box, relay to Claude's input box |
+| `send` | `prefix + a` binding | queue a message typed in tmux's prompt (inbox for foreground agents, relay for background ones) |
 | `relayout` | the viewer, on exit | re-even the column |
 
 ## Testing your change
@@ -38,11 +38,13 @@ There's no automated suite yet; contributions welcome. Before opening a PR, plea
 
 1. `python3 -m py_compile scripts/cc_micro_manage.py`
 2. A real run inside tmux, using the quick-start prompt in the README: panes open, the nested agents split their parent, and everything closes at the end.
-3. If you touched messaging, a headless foreground run, where messages can be delivered:
-   ```bash
-   claude -p "Use the Agent tool to spawn ONE general-purpose subagent: 'run sleep 15, then reply with a one-line summary.'"
-   ```
-   While it sleeps, type a message into its pane and check that it's acted on.
+3. If you touched messaging, check both delivery paths:
+   - **Background (relay):** in interactive `claude`, ask for a background subagent that makes ~15 separate Bash calls, each running `python3 -c 'import time; time.sleep(3)'; echo step N`. Type a message into its pane and check that the pane shows `✉ handed to Claude`, then `✉ received from Claude`, and that later steps change. Leave a draft in Claude's input box first and check that the relay waits until you clear it.
+   - **Foreground (stop hook):** a headless run, where subagents run in the foreground:
+     ```bash
+     claude -p "Use the Agent tool to spawn ONE general-purpose subagent: 'run sleep 15, then reply with a one-line summary.'"
+     ```
+     While it sleeps, type a message into its pane and check that it's acted on.
 
 ## Guidelines
 

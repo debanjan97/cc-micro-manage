@@ -14,7 +14,7 @@
 
 </div>
 
-When Claude Code fans work out to subagents, all you normally see is a spinner. **cc-micro-manage** gives each subagent its own live tmux pane, showing its task, text, thinking, tool calls and results as they happen. Panes stack up beside Claude as agents start and close as they finish.
+When Claude Code fans work out to subagents, all you normally see is a spinner. **cc-micro-manage** gives each subagent its own live tmux pane, showing its task, text, thinking, tool calls and results as they happen. Panes stack up beside Claude as agents start and close as they finish, and you can type into any of them to steer that agent mid-task.
 
 ## Contents
 
@@ -37,10 +37,10 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 - 📊 **Footer like Claude Code's.** Each pane shows the model, effort level, context size, output tokens and elapsed time for its agent.
 - 📚 **FIFO stack.** Panes stack on the right, oldest on top, while Claude keeps the left 55%. When an agent finishes, its pane closes and the rest move up evenly.
 - 🌳 **Nested agents split their parent.** A subagent's own subagents open beside *its* pane, following the same rule at every level, up to Claude Code's depth limit of 5.
-- 💬 **Message box.** Type into a foreground subagent's pane to steer it before it finishes (see [Messaging](#messaging-a-subagent)).
+- 💬 **Message box.** Type into any subagent's pane to steer it mid-task. Background agents get it relayed through Claude within seconds (see [Messaging](#messaging-a-subagent)).
 - 🧹 **Cleans up after itself.** Panes close when agents finish, when Claude's pane goes away, or after 30 idle minutes.
 - 🪶 **Lightweight.** One Python file with no dependencies. The hook returns instantly, and outside tmux it does nothing.
-- 🔒 **Read-only views.** Your agents run exactly as before, and the plugin never rearranges panes you created yourself.
+- 🔒 **Hands-off.** Your agents run exactly as before, and the plugin never rearranges panes you created yourself. The only time it types anything is when you message a background agent: it puts a one-line request into Claude's input box, and only while that box is empty.
 
 ## Requirements
 
@@ -99,15 +99,26 @@ Every pane has a message box on its bottom line. Click the pane (with tmux mouse
 ✉ › |
 ```
 
-The message is **delivered when the subagent tries to finish**. The plugin holds the subagent from finishing and passes your message as the reason, so it keeps working, then mentions in its final reply what it did about your message. The calling agent is also told what you sent, so it doesn't mistake the extra work for the subagent going off-brief.
+How the message gets there depends on how Claude started the subagent:
 
-> [!IMPORTANT]
-> **Messaging only works for foreground subagents.** Interactive Claude Code usually runs subagents in the **background**. A background subagent hands its report back before it stops, so there's no point at which it can still be steered. Those panes show `read-only · background subagent`. Messaging works when Claude runs subagents in the foreground, for example in `claude -p` (headless) runs.
+| Subagent | How your message reaches it |
+|---|---|
+| **Background** (the usual case in interactive Claude Code) | **Relayed through Claude.** Once Claude's input box is empty, the plugin types a one-line request into it for you ("pass this on to subagent … with SendMessage"), and Claude forwards it with its own messaging tool. The agent picks it up at its next tool call, usually within seconds, and the pane shows `✉ received from Claude`. |
+| **Foreground** (e.g. `claude -p` runs) | **Delivered when it tries to finish.** The plugin holds the subagent from finishing and passes your message as the reason, so it keeps working and mentions what it did about it. The calling agent is told what you sent, so the extra work isn't mistaken for going off-brief. |
+
+```
+✉ you: also check the refresh-token path (relaying via Claude)
+✉ handed to Claude (it lands at the agent's next tool call)
+✉ received from Claude: also check the refresh-token path
+```
+
+> [!NOTE]
+> **The relay never touches a draft.** If you've half-typed something in Claude's input box, or a permission dialog or copy mode is open, the relay waits and the pane's status line says `✉ waiting: Claude's input box has a draft`. It sends as soon as the box is clear. The relay shows up in Claude's conversation as a normal message from you, and Claude confirms it in one line. Set `CC_MICRO_MANAGE_RELAY=0` to turn it off; background panes are then read-only.
 
 <details>
-<summary>Why not deliver messages instantly, mid-task?</summary>
+<summary>Why not inject messages straight into the subagent?</summary>
 
-We tried. Text that appears in the middle of an agent's work claiming "the user says…" looks exactly like a prompt injection, and Claude rightly ignores it. That holds whether it arrives in a tool result, as extra context from a hook, or as the reason a tool call was blocked. The one channel Claude treats as legitimate steering is a hook that holds the agent from finishing and explains why. That channel exists for steering ("keep going until the tests pass"), so cc-micro-manage uses it.
+We tried. Text that appears in the middle of an agent's work claiming "the user says…" looks exactly like a prompt injection, and Claude rightly ignores it. That holds whether it arrives in a tool result, as extra context from a hook, or as the reason a tool call was blocked. The one channel Claude treats as legitimate steering is a hook that holds the agent from finishing and explains why. That channel exists for steering ("keep going until the tests pass"), so cc-micro-manage uses it for foreground agents. Background agents ignore it, but Claude itself can message them, and a request typed into Claude's own input box is genuinely yours, so the relay goes that way.
 </details>
 
 Your text goes through a tmux pane option, never through a shell, so quotes, `$(…)` and `#{…}` are all safe.
@@ -121,6 +132,7 @@ Set these in the `env` block of `~/.claude/settings.json`, or export them before
 | `CC_MICRO_MANAGE_LAYOUT` | `split` | `split`: a column beside Claude, as in the GIF. `window`: tile all subagent panes in a separate `agents` tmux window. |
 | `CC_MICRO_MANAGE_LINGER` | `10` | Seconds a pane stays open after its agent finishes. `-1` keeps it open until you press Enter. |
 | `CC_MICRO_MANAGE_KEY` | `a` | Key after your tmux prefix that opens the message prompt. `none` disables it. An existing binding that isn't ours is never overwritten. |
+| `CC_MICRO_MANAGE_RELAY` | `1` | `0` stops relaying messages for background subagents through Claude's input box. |
 | `CC_MICRO_MANAGE_BORDERS` | `1` | `0` stops the plugin turning on pane-border titles. They're only added to windows with agent panes, and only if you haven't enabled borders yourself. They switch off again when the last agent finishes. |
 | `CC_MICRO_MANAGE_SKIP` | none | Comma-separated agent types to ignore, e.g. `Explore,statusline-setup` |
 | `CC_MICRO_MANAGE_OFF` | none | `1` disables the plugin without uninstalling it. |
@@ -150,6 +162,11 @@ sequenceDiagram
     T->>V: start viewer
     V->>V: tail subagents/agent-ID.jsonl and render
     C->>H: SubagentStop
+    opt you message a background agent
+        V->>T: wait for Claude's input box to be empty
+        V->>C: type "pass this on with SendMessage", Enter
+        C->>C: SendMessage, lands at the agent's next tool call
+    end
     alt messages waiting (foreground agent)
         H-->>C: block, with your messages as the reason
     else
@@ -198,7 +215,7 @@ Your tmux server may have kept an old `ANTHROPIC_API_KEY`. Check with `tmux show
 ## Limitations
 
 - **It relies on undocumented internals.** The hook events are documented. The transcript files (`subagents/agent-<id>.jsonl`) and the parent links (`agent-<id>.meta.json`) are not, and a Claude Code release could change them. Parsing is defensive: the worst case is a pane that can't find its transcript.
-- **Messaging is foreground-only.** See [above](#messaging-a-subagent).
+- **Relayed messages go through Claude's conversation.** Each one adds a short turn (your relay request and Claude's one-line confirmation) to the main session. The relay reads Claude's input box from the screen, so a big Claude Code UI change could stop it detecting an empty box; it then just waits, and never types over anything.
 - **It's a view, not a terminal.** You can't type commands into a subagent. Panes show what the agent does.
 - **It needs tmux.** There's no iTerm2, WezTerm or Zellij support yet. PRs are welcome.
 

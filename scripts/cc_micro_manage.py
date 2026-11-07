@@ -15,6 +15,9 @@ Messaging: focus a subagent pane, press prefix + a, type. The message is queued
 and delivered when the subagent tries to finish (SubagentStop block + reason),
 which models treat as legitimate steering; mid-task injection is (rightly) read
 as prompt injection. The main agent is told what you sent (PostToolUse note).
+Background subagents ignore that, so for them the message is relayed: once
+Claude's input box is empty, the viewer types "pass this on with SendMessage"
+into it for you.
 
 Layout ("split", default): Claude stays on the left, subagents stack in a column
 on the right, oldest on top (FIFO). A nested subagent splits its parent's pane the
@@ -26,6 +29,7 @@ Env knobs (settings.json "env" block or your shell):
   CC_MICRO_MANAGE_SKIP    comma-separated agent types to ignore
   CC_MICRO_MANAGE_OFF     1 = disable
   CC_MICRO_MANAGE_KEY     tmux key (after your prefix) to message the focused subagent (default a)
+  CC_MICRO_MANAGE_RELAY   0 = don't relay messages for background subagents through main Claude
   CC_MICRO_MANAGE_BORDERS  0 = don't turn on pane-border titles in agent windows
   CC_MICRO_MANAGE_DEBUG   1 = log hook payloads to /tmp/cc-micro-manage-<uid>/debug.jsonl
 """
@@ -204,19 +208,10 @@ def _relayout(claude_pane):
 # ───────────────────────────── messaging ────────────────────────────
 # <key>.inbox      one JSON line per message you typed
 # <key>.delivered  how many inbox lines have been handed to the subagent
+# <key>.relay      background agents: messages to relay through main Claude
 
 def _inbox(key):
-    out = []
-    try:
-        with open(os.path.join(STATE_DIR, key + ".inbox")) as f:
-            for line in f:
-                try:
-                    out.append(json.loads(line)["text"])
-                except (ValueError, KeyError):
-                    pass
-    except OSError:
-        pass
-    return out
+    return _lines(key, ".inbox")
 
 
 def _delivered(key):
@@ -260,22 +255,106 @@ def cmd_send(pane):
     if not agent_key:
         _tmux("display-message", "This pane isn't a subagent pane.")
         return
-    err = _queue(agent_key, text)
-    _tmux("display-message", err or "✉ queued, delivered when the subagent wraps up")
+    err, how = _queue(agent_key, text)
+    _tmux("display-message", err or ("✉ relaying via Claude" if how == "relay"
+                                     else "✉ queued, delivered when the subagent wraps up"))
 
 
-BACKGROUND_NOTE = "read-only · background subagent (messaging needs foreground)"
+BACKGROUND_NOTE = "read-only · background subagent (relay is off: CC_MICRO_MANAGE_RELAY=0)"
+RELAY_STATUS = "type a message · Enter relays it via Claude"
+
+
+def _relay_on(key):
+    # decided in the hook (Claude's env) at place time; panes don't see that env
+    return not os.path.exists(os.path.join(STATE_DIR, key + ".norelay"))
 
 
 def _queue(key, text):
-    """Append a message to an agent's inbox. Returns an error string or None."""
+    """Queue a message for an agent. Foreground agents get it at SubagentStop
+    (<key>.inbox); background agents get it relayed through main Claude
+    (<key>.relay, picked up by the viewer). Returns (error, how)."""
     if os.path.exists(os.path.join(STATE_DIR, key + ".done")):
-        return "That subagent has already finished; message not sent."
+        return "That subagent has already finished; message not sent.", None
     if _read(os.path.join(STATE_DIR, key + ".shape")) == "background":
-        return BACKGROUND_NOTE
-    with open(os.path.join(STATE_DIR, key + ".inbox"), "a") as f:
+        if not _relay_on(key):
+            return BACKGROUND_NOTE, None
+        box, how = ".relay", "relay"
+    else:
+        box, how = ".inbox", "inbox"
+    with open(os.path.join(STATE_DIR, key + box), "a") as f:
         f.write(json.dumps({"ts": time.time(), "text": text}) + "\n")
+    return None, how
+
+
+def _lines(key, suffix):
+    out = []
+    try:
+        with open(os.path.join(STATE_DIR, key + suffix)) as f:
+            for line in f:
+                try:
+                    out.append(json.loads(line)["text"])
+                except (ValueError, KeyError):
+                    pass
+    except OSError:
+        pass
+    return out
+
+
+# ── relay through main Claude ─────────────────────────────────────────
+# Background subagents ignore SubagentStop blocks, but main Claude can message
+# them with SendMessage. So we type the request into Claude's own input box,
+# as if you had, but only while that box is empty: never clobber a draft.
+
+_SGR = re.compile(r"\x1b\[([0-9;]*)m")
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def _claude_input(pane):
+    """Read Claude Code's input box from its pane.
+    Returns "empty", "draft", or None (no box visible: dialog open, copy mode,
+    not Claude...)."""
+    try:
+        if _tmux("display-message", "-p", "-t", pane, "#{pane_in_mode}") == "1":
+            return None
+        raw = _tmux("capture-pane", "-e", "-p", "-t", pane).split("\n")
+    except Exception:
+        return None
+    for i in range(len(raw) - 1, 0, -1):
+        if not _ANSI.sub("", raw[i]).startswith("❯"):
+            continue
+        if not _ANSI.sub("", raw[i - 1]).startswith("──"):    # the box's top rule
+            continue
+        rest = raw[i][raw[i].index("❯") + 1:]
+        if not _ANSI.sub("", rest).strip():
+            return "empty"
+        # placeholder / suggestion text is drawn dim (SGR 2); your draft isn't
+        m = re.match(r"\s*((?:\x1b\[[0-9;]*m\s*)+)", rest)
+        if m and any("2" in g.split(";") for g in _SGR.findall(m.group(1))):
+            return "empty"
+        return "draft"
     return None
+
+
+def _relay_prompt(agent_id, purpose, text):
+    text = " ".join(text.split())
+    who = f"{agent_id} ({purpose})" if purpose else agent_id
+    return (f"[cc-micro-manage] I'm messaging background subagent {who} from its tmux pane. "
+            f"Pass this on to it with SendMessage, verbatim, then confirm in one line: {text}")
+
+
+def _type_into(pane, prompt):
+    """Type prompt into Claude's (empty) input box and submit it. True if sent."""
+    _tmux("send-keys", "-t", pane, "-l", prompt)
+    probe = prompt[:24]
+    for _ in range(10):                        # wait for Claude to echo it
+        time.sleep(0.15)
+        try:
+            if probe in _ANSI.sub("", _tmux("capture-pane", "-p", "-t", pane)).replace("\n", ""):
+                _tmux("send-keys", "-t", pane, "Enter")
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def cmd_stop_hook(data):
@@ -385,10 +464,22 @@ def _meta_now(transcript, agent_id):
         return {}
 
 
+def _prune(max_age=86400):
+    """Drop state left by agents that never got (or outlived) a pane."""
+    cutoff = time.time() - max_age
+    for f in glob.glob(os.path.join(STATE_DIR, "*")):
+        try:
+            if os.path.isfile(f) and os.path.getmtime(f) < cutoff and not f.endswith(".jsonl"):
+                os.remove(f)
+        except OSError:
+            pass
+
+
 def cmd_place():
     data = json.load(sys.stdin)
     agent_id, agent_type = data["agent_id"], data["agent_type"]
     os.makedirs(STATE_DIR, exist_ok=True)
+    _prune()
     key = _safe(agent_id)
     state = os.path.join(STATE_DIR, key + ".pane")
 
@@ -475,6 +566,8 @@ def cmd_place():
         _write(state, pane)
         if meta.get("requestShape"):
             _write(os.path.join(STATE_DIR, key + ".shape"), meta["requestShape"])
+        if os.environ.get("CC_MICRO_MANAGE_RELAY") == "0":
+            _write(os.path.join(STATE_DIR, key + ".norelay"), "1")
         try:  # the pane itself says which agent it shows (tmux reuses pane ids across restarts)
             _tmux("set-option", "-p", "-t", pane, "@cc_micro_manage_agent", agent_id)
         except Exception:
@@ -631,6 +724,12 @@ def _render(line, first):
     try:
         ev = json.loads(line)
     except json.JSONDecodeError:
+        return
+    att = ev.get("attachment") if ev.get("type") == "attachment" else None
+    if isinstance(att, dict) and att.get("type") == "queued_command" and att.get("prompt"):
+        # a SendMessage from Claude reached this agent (e.g. a relayed message)
+        who = "Claude" if (att.get("origin") or {}).get("kind") == "coordinator" else "caller"
+        print(f"{C['yel']}{C['b']}✉ received from {who}:{C['r']} {C['yel']}{_trunc(_clean(str(att['prompt'])), 300)}{C['r']}")
         return
     # Only real conversation turns: skip attachments, api-request records, and
     # isMeta entries (e.g. our own stop-hook feedback, already shown as ✉ delivered).
@@ -945,8 +1044,9 @@ def cmd_view(argv):
         linger = 10.0
 
     def on_send(text):
-        err = _queue(key, text)
-        screen.set_status(err or "✉ queued · type another, or wait for it to wrap up")
+        err, how = _queue(key, text)
+        screen.set_status(err or ("✉ relaying via Claude · type another" if how == "relay"
+                                  else "✉ queued · type another, or wait for it to wrap up"))
 
     screen = _Screen(on_send)
     stats = _Stats()
@@ -984,7 +1084,10 @@ def cmd_view(argv):
             idle_since = None
             last_data = last_check = time.time()
             max_idle = 30 * 60  # no transcript activity for 30 min -> give up
-            seen_q = seen_d = 0
+            seen_q = seen_d = seen_r = 0
+            to_relay = collections.deque()   # background: waiting for Claude's input box
+            relay_try = relay_wait_since = 0.0
+            relay_note = ""
             shape_checked = False
             last_footer = 0
             with open(path) as f:
@@ -1016,6 +1119,33 @@ def cmd_view(argv):
                         print(f"{C['yel']}{C['b']}✉ delivered {d - seen_d} message(s){C['r']}\n")
                         screen.set_status("type a message for this agent · Enter to send")
                     seen_q, seen_d = len(q), max(seen_d, d)
+                    r = _lines(key, ".relay")
+                    for m in r[seen_r:]:
+                        print(f"{C['yel']}✉ you: {m}{C['r']} {C['dim']}(relaying via Claude){C['r']}")
+                        to_relay.append(m)
+                    seen_r = len(r)
+                    if to_relay and parent and time.time() - relay_try > 0.5:
+                        relay_try = time.time()
+                        relay_wait_since = relay_wait_since or relay_try
+                        box = _claude_input(parent)
+                        if box == "empty":
+                            m = to_relay[0]
+                            if _type_into(parent, _relay_prompt(agent_id, args.get("title"), m)):
+                                to_relay.popleft()
+                                print(f"{C['yel']}{C['b']}✉ handed to Claude{C['r']} "
+                                      f"{C['dim']}(it lands at the agent's next tool call){C['r']}\n")
+                            else:
+                                print(f"{C['red']}✉ typed into Claude's input but couldn't send it; "
+                                      f"check that pane{C['r']}")
+                                to_relay.popleft()
+                            relay_wait_since, relay_note = 0.0, ""
+                            screen.set_status(RELAY_STATUS)
+                        elif time.time() - relay_wait_since > 2:
+                            note = ("✉ waiting: Claude's input box has a draft" if box == "draft"
+                                    else "✉ waiting for Claude's input box")
+                            if note != relay_note:
+                                relay_note = note
+                                screen.set_status(note)
                     sys.stdout.flush()
                     if os.path.exists(done_file):
                         idle_since = idle_since or time.time()
@@ -1024,8 +1154,11 @@ def cmd_view(argv):
                     if not shape_checked and _read(shape_file):
                         shape_checked = True
                         if _read(shape_file) == "background":
-                            screen.input_enabled = False
-                            screen.set_status(BACKGROUND_NOTE)
+                            if _relay_on(key) and parent:
+                                screen.set_status(RELAY_STATUS)
+                            else:
+                                screen.input_enabled = False
+                                screen.set_status(BACKGROUND_NOTE)
                     now = time.time()
                     if now - last_check > 3:
                         last_check = now
@@ -1047,10 +1180,12 @@ def cmd_view(argv):
         screen.footer = stats.variants()
         print(f"\n{C['green']}{C['b']}✓ {(args.get('title') or agent_type)} finished{C['r']}")
         pending = len(_inbox(key)) - _delivered(key)
+        if path:
+            pending += len(to_relay)
         if pending > 0:
             print(f"{C['red']}✉ {pending} message(s) arrived too late to deliver{C['r']}")
         sys.stdout.flush()
-        for suffix in (".done", ".pane", ".inbox", ".delivered", ".shape"):
+        for suffix in (".done", ".pane", ".inbox", ".delivered", ".shape", ".relay", ".norelay"):
             try:
                 os.remove(os.path.join(STATE_DIR, key + suffix))
             except OSError:

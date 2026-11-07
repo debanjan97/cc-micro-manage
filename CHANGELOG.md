@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-07
+
+### Added
+- **Message background subagents.** Typing into a background agent's pane (or `prefix + a`) now relays the message through Claude: once Claude's input box is empty, the plugin types a one-line "pass this on with SendMessage" request into it, and the agent gets it at its next tool call. Works for nested agents too. It never types over a draft, a dialog or copy mode; it waits instead. `CC_MICRO_MANAGE_RELAY=0` turns it off.
+- Panes show `✉ received from Claude: …` when a message from Claude reaches the agent.
+
+### Fixed
+- Stale state files older than a day are pruned from `/tmp/cc-micro-manage-<uid>`.
+
 ## [0.4.0] - 2026-11-07
 
 ### Added
@@ -29,6 +38,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [0.3.1] - 2026-11-07
 
+
 ### Fixed
 - Panes for **background** subagents no longer hang after the agent finishes. The viewer now also watches Claude Code's `finished` flag in the agent's meta file.
 - The stop hook no longer tries to block background subagents. They have already handed back their report, so the block was ignored.
@@ -43,6 +53,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - A message box on the bottom line of each pane: type and press Enter to message a subagent.
 - Panes redraw cleanly when resized.
 
+
 ### Fixed
 - Pane width now comes from the terminal itself, not an inherited `$COLUMNS`.
 
@@ -51,6 +62,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Messaging via `prefix + a`: queued messages are delivered when the subagent tries to finish, and the calling agent is told what was sent.
 - Nested subagents split their parent's pane, using parent links from `meta.json`.
+
 
 ### Fixed
 - tmux pane-ID reuse could send a message to the wrong agent. Each pane is now tagged with its agent's ID.
