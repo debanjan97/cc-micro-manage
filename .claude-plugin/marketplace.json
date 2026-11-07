@@ -8,7 +8,7 @@
       "name": "cc-micro-manage",
       "source": "./",
       "description": "Micro-manage your Claude Code subagents: each one gets a live tmux pane (stacked FIFO, nested ones split their parent) with a message box to steer it.",
-      "version": "0.3.2"
+      "version": "0.3.3"
     }
   ]
 }

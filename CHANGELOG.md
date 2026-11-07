@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-07
+
 ### Added
 - A footer under each pane's message box, like Claude Code's own: model, effort level, current context size, total output tokens and elapsed time (e.g. `Haiku 5.5 · medium effort · 51.0k context · 1.6k out · 9s`). The timer stops when the agent finishes.
 
