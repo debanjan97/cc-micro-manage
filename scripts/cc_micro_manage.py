@@ -56,14 +56,26 @@ SELF = os.path.abspath(__file__)
 
 # ───────────────────────────── helpers ──────────────────────────────
 
+# Every variable this plugin reads is spelled out here, never built at run time.
+_SETTINGS = {
+    "LAYOUT": ("CC_MICRO_MANAGE_LAYOUT", "CLAUDE_PLUGIN_OPTION_LAYOUT"),
+    "LINGER": ("CC_MICRO_MANAGE_LINGER", "CLAUDE_PLUGIN_OPTION_LINGER"),
+    "MESSAGE_KEY": ("CC_MICRO_MANAGE_KEY", "CLAUDE_PLUGIN_OPTION_MESSAGE_KEY"),
+    "RELAY": ("CC_MICRO_MANAGE_RELAY", "CLAUDE_PLUGIN_OPTION_RELAY"),
+    "BORDERS": ("CC_MICRO_MANAGE_BORDERS", "CLAUDE_PLUGIN_OPTION_BORDERS"),
+    "SKIP": ("CC_MICRO_MANAGE_SKIP", "CLAUDE_PLUGIN_OPTION_SKIP"),
+}
+
+
 def _opt(name, default, legacy=None):
     """A setting: CC_MICRO_MANAGE_<NAME> env (explicit override) wins, then the
     plugin option the user set in /config (CLAUDE_PLUGIN_OPTION_<NAME>), then
     the default. Only hook processes see these; panes get what they need as
     arguments or state files."""
-    v = os.environ.get("CC_MICRO_MANAGE_" + (legacy or name))
+    env_name, option_name = _SETTINGS[name]
+    v = os.environ.get(env_name)
     if v is None or v == "":
-        v = os.environ.get("CLAUDE_PLUGIN_OPTION_" + name)
+        v = os.environ.get(option_name)
     if v is None or str(v).strip() == "":
         return default
     return str(v).strip()
@@ -433,8 +445,8 @@ def _debug(event, data):
     if os.environ.get("CC_MICRO_MANAGE_DEBUG") == "1":
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(os.path.join(STATE_DIR, "debug.jsonl"), "a") as f:
-            opts = {k: v for k, v in os.environ.items()
-                    if k.startswith(("CLAUDE_PLUGIN_OPTION_", "CC_MICRO_MANAGE_"))}
+            names = [n for pair in _SETTINGS.values() for n in pair]
+            opts = {n: os.environ[n] for n in names if n in os.environ}
             f.write(json.dumps({"event": event, "payload": data, "TMUX_PANE": os.environ.get("TMUX_PANE"),
                                 "options": opts}) + "\n")
 
