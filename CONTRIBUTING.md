@@ -38,7 +38,7 @@ There's no automated suite yet; contributions welcome. Before opening a PR, plea
 1. `python3 -m py_compile scripts/cc_micro_manage.py`
 2. A real run inside tmux, using the quick-start prompt in the README: panes open, the nested agents split their parent, and everything closes at the end.
 3. If you touched messaging, check both delivery paths:
-   - **Background (relay):** in interactive `claude`, ask for a background subagent that makes ~15 separate Bash calls, each running `python3 -c 'import time; time.sleep(3)'; echo step N`. Type a message into its pane and check that the pane shows `✉ handed to Claude`, then `✉ received from Claude`, and that later steps change. Leave a draft in Claude's input box first and check that the relay waits until you clear it.
+   - **Background (relay):** in interactive `claude`, ask for a background subagent that makes ~15 separate Bash calls that each take a few seconds and print a step number. Type a message into its pane and check that the pane shows `✉ handed to Claude`, then `✉ received from Claude`, and that later steps change. Leave a draft in Claude's input box first and check that the relay waits until you clear it.
    - **Foreground (stop hook):** a headless run, where subagents run in the foreground:
      ```bash
      claude -p "Use the Agent tool to spawn ONE general-purpose subagent: 'run sleep 15, then reply with a one-line summary.'"
