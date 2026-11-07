@@ -14,8 +14,7 @@ Please [open an issue](https://github.com/debanjan97/cc-micro-manage/issues) and
 
 ```bash
 git clone https://github.com/debanjan97/cc-micro-manage
-cd cc-micro-manage
-claude plugin marketplace add "$PWD"
+claude plugin marketplace add ./cc-micro-manage
 claude plugin install cc-micro-manage@cc-micro-manage
 ```
 
