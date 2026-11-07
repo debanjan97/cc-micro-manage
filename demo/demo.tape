@@ -4,8 +4,8 @@
 Output demo/demo.gif
 
 Set Shell "bash"
-Set FontSize 13
-Set Width 1280
+Set FontSize 14
+Set Width 1720
 Set Height 720
 Set Padding 10
 Set Theme "Catppuccin Mocha"
@@ -28,7 +28,7 @@ Type "Launch 3 general-purpose subagents in parallel: (1) Scout: read every .go 
 Sleep 500ms
 Enter
 
-Sleep 48s
+Sleep 56s
 Hide
 Type "tmux -L ccmm kill-server"
 Enter
