@@ -37,9 +37,9 @@
       "min": -1,
       "max": 3600
     },
-    "message_key": {
+    "message_shortcut": {
       "type": "string",
-      "title": "Message key",
+      "title": "Message shortcut",
       "description": "Key after your tmux prefix that opens a message prompt for the focused subagent pane. \"none\" disables it. A binding that isn't ours is never overwritten.",
       "default": "a"
     },

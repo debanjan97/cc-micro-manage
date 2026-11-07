@@ -29,7 +29,7 @@ or these env vars, which win over the plugin options (settings.json "env" or you
   CC_MICRO_MANAGE_LINGER  seconds a pane stays after its subagent finishes (default 10; -1 = until Enter)
   CC_MICRO_MANAGE_SKIP    comma-separated agent types to ignore
   CC_MICRO_MANAGE_OFF     1 = disable
-  CC_MICRO_MANAGE_KEY     tmux key (after your prefix) to message the focused subagent (default a)
+  CC_MICRO_MANAGE_SHORTCUT  tmux key (after your prefix) to message the focused subagent (default a)
   CC_MICRO_MANAGE_RELAY   0 = don't relay messages for background subagents through main Claude
   CC_MICRO_MANAGE_BORDERS  0 = don't turn on pane-border titles in agent windows
   CC_MICRO_MANAGE_DEBUG   1 = log hook payloads to /tmp/cc-micro-manage-<uid>/debug.jsonl
@@ -60,7 +60,7 @@ SELF = os.path.abspath(__file__)
 _SETTINGS = {
     "LAYOUT": lambda: (os.environ.get("CC_MICRO_MANAGE_LAYOUT"), os.environ.get("CLAUDE_PLUGIN_OPTION_LAYOUT")),
     "LINGER": lambda: (os.environ.get("CC_MICRO_MANAGE_LINGER"), os.environ.get("CLAUDE_PLUGIN_OPTION_LINGER")),
-    "MESSAGE_KEY": lambda: (os.environ.get("CC_MICRO_MANAGE_KEY"), os.environ.get("CLAUDE_PLUGIN_OPTION_MESSAGE_KEY")),
+    "SHORTCUT": lambda: (os.environ.get("CC_MICRO_MANAGE_SHORTCUT"), os.environ.get("CLAUDE_PLUGIN_OPTION_MESSAGE_SHORTCUT")),
     "RELAY": lambda: (os.environ.get("CC_MICRO_MANAGE_RELAY"), os.environ.get("CLAUDE_PLUGIN_OPTION_RELAY")),
     "BORDERS": lambda: (os.environ.get("CC_MICRO_MANAGE_BORDERS"), os.environ.get("CLAUDE_PLUGIN_OPTION_BORDERS")),
     "SKIP": lambda: (os.environ.get("CC_MICRO_MANAGE_SKIP"), os.environ.get("CLAUDE_PLUGIN_OPTION_SKIP")),
@@ -257,7 +257,7 @@ def _delivered(key):
 def _bind_key():
     """Register prefix+<key> -> tmux prompt -> `send`. Never clobbers a binding
     that isn't ours."""
-    key = _opt("MESSAGE_KEY", "a", legacy="KEY")
+    key = _opt("SHORTCUT", "a")
     if not key or key.lower() == "none":
         return
     try:

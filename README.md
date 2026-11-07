@@ -131,7 +131,7 @@ Change settings in Claude Code's **`/config`** panel, where cc-micro-manage's op
 |---|---|---|
 | **Pane layout** (`layout`) | `split` | `split`: a column beside Claude, as in the GIF. `window`: tile all subagent panes in a separate `agents` tmux window. |
 | **Seconds a pane stays after its agent finishes** (`linger`) | `10` | `-1` keeps a finished pane open until you press Enter. |
-| **Message key** (`message_key`) | `a` | Key after your tmux prefix that opens the message prompt. `none` disables it. A binding that isn't ours is never overwritten, so pick a free key (tmux already uses `m`, for example). |
+| **Message shortcut** (`message_shortcut`) | `a` | Key after your tmux prefix that opens the message prompt. `none` disables it. A binding that isn't ours is never overwritten, so pick a free key (tmux already uses `m`, for example). |
 | **Relay messages to background subagents** (`relay`) | on | Off makes background panes read-only. See [Messaging](#messaging-a-subagent). |
 | **Pane border titles** (`borders`) | on | Turns on pane-border titles in windows with agent panes, only if you haven't enabled borders yourself, and switches them off when the last agent finishes. |
 | **Agent types to ignore** (`skip`) | none | Comma-separated, e.g. `Explore,statusline-setup`. |
@@ -145,7 +145,7 @@ echo '{"linger": "5", "skip": "statusline-setup"}' | claude plugin configure cc-
 <details>
 <summary>Environment variables (older setups, per-shell overrides, debugging)</summary>
 
-Each setting also has an environment variable, which wins over the plugin setting: `CC_MICRO_MANAGE_LAYOUT`, `CC_MICRO_MANAGE_LINGER`, `CC_MICRO_MANAGE_KEY`, `CC_MICRO_MANAGE_RELAY` (`0` = off), `CC_MICRO_MANAGE_BORDERS` (`0` = off) and `CC_MICRO_MANAGE_SKIP`. Set them in the `env` block of `~/.claude/settings.json` or export them before starting `claude`. Two exist only as variables:
+Each setting also has an environment variable, which wins over the plugin setting: `CC_MICRO_MANAGE_LAYOUT`, `CC_MICRO_MANAGE_LINGER`, `CC_MICRO_MANAGE_SHORTCUT`, `CC_MICRO_MANAGE_RELAY` (`0` = off), `CC_MICRO_MANAGE_BORDERS` (`0` = off) and `CC_MICRO_MANAGE_SKIP`. Set them in the `env` block of `~/.claude/settings.json` or export them before starting `claude`. Two exist only as variables:
 
 | Variable | What it does |
 |---|---|
@@ -209,7 +209,7 @@ Claude Code changed where it stores subagent transcripts. They are undocumented 
 <details>
 <summary><b><code>prefix + a</code> does nothing</b></summary>
 
-Another binding already uses that key, and cc-micro-manage never overwrites bindings it didn't create. Pick a free **Message key** in [the settings](#configuration), or type into the pane's message box directly.
+Another binding already uses that key, and cc-micro-manage never overwrites bindings it didn't create. Pick a free **Message shortcut** in [the settings](#configuration), or type into the pane's message box directly.
 </details>
 
 <details>
