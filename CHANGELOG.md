@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-07
+
+### Added
+- **Settings in Claude Code's `/config` panel.** Layout, linger time, message key, relay, border titles and ignored agent types are now plugin options (`userConfig`), so you no longer have to edit `env` in `settings.json`. They can also be set from the shell with `claude plugin install --config` or `claude plugin configure --values-stdin`. The `CC_MICRO_MANAGE_*` environment variables still work and take precedence.
+- Plugin icon and directory listing metadata (homepage, repository, documentation and support links), ready for Anthropic's community plugin directory.
+- The debug log records which settings the hooks received.
+
+### Changed
+- The footer is drawn as a rule, like the status line above the message box, and background panes no longer show a "relays it via Claude" hint.
+
 ## [0.5.0] - 2026-11-07
 
 ### Added

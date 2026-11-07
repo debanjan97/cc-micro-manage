@@ -1,16 +1,65 @@
 {
   "name": "cc-micro-manage",
-  "version": "0.5.0",
+  "displayName": "cc-micro-manage",
+  "version": "0.6.0",
   "description": "Micro-manage your Claude Code subagents: each one gets a live tmux pane (stacked FIFO, nested ones split their parent) with a message box to steer it, even in the background.",
   "author": {
-    "name": "Debanjan Ganguly"
+    "name": "Debanjan Ganguly",
+    "url": "https://github.com/debanjan97"
   },
+  "homepage": "https://github.com/debanjan97/cc-micro-manage#readme",
+  "repository": "https://github.com/debanjan97/cc-micro-manage",
+  "documentationUrl": "https://github.com/debanjan97/cc-micro-manage#readme",
+  "supportUrl": "https://github.com/debanjan97/cc-micro-manage/issues",
+  "icon": "./.claude-plugin/icon.png",
   "license": "MIT",
   "keywords": [
     "tmux",
     "subagents",
-    "hooks",
+    "agents",
     "observability",
-    "steering"
-  ]
+    "monitoring",
+    "steering",
+    "terminal"
+  ],
+  "userConfig": {
+    "layout": {
+      "type": "string",
+      "title": "Pane layout",
+      "description": "split: subagent panes stack in a column beside Claude. window: they tile in a separate \"agents\" tmux window.",
+      "default": "split"
+    },
+    "linger": {
+      "type": "number",
+      "title": "Seconds a pane stays after its agent finishes",
+      "description": "How long a finished agent's pane stays open so you can read its result. -1 keeps it open until you press Enter.",
+      "default": 10,
+      "min": -1,
+      "max": 3600
+    },
+    "message_key": {
+      "type": "string",
+      "title": "Message key",
+      "description": "Key after your tmux prefix that opens a message prompt for the focused subagent pane. \"none\" disables it. A binding that isn't ours is never overwritten.",
+      "default": "a"
+    },
+    "relay": {
+      "type": "boolean",
+      "title": "Relay messages to background subagents",
+      "description": "When you message a background subagent, type a one-line SendMessage request into Claude's input box for you (only while it's empty). Off makes background panes read-only.",
+      "default": true
+    },
+    "borders": {
+      "type": "boolean",
+      "title": "Pane border titles",
+      "description": "Turn on tmux pane-border titles (agent purpose and a status dot) in windows with agent panes, if you haven't enabled borders yourself.",
+      "default": true
+    },
+    "skip": {
+      "type": "string",
+      "title": "Agent types to ignore",
+      "description": "Comma-separated subagent types that never get a pane, e.g. Explore,statusline-setup",
+      "default": ""
+    }
+  }
 }

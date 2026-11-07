@@ -46,7 +46,7 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 
 | | |
 |---|---|
-| **Claude Code** | Recent version with plugin support. Tested with 2.1.319. |
+| **Claude Code** | 2.1.83 or newer (settings show up in `/config` from 2.1.269). Tested with 2.1.319. |
 | **tmux** | 3.0 or newer, and Claude must run inside it. |
 | **Python** | 3.9 or newer, as `python3` on your `PATH`. |
 | **OS** | macOS or Linux. |
@@ -113,7 +113,7 @@ How the message gets there depends on how Claude started the subagent:
 ```
 
 > [!NOTE]
-> **The relay never touches a draft.** If you've half-typed something in Claude's input box, or a permission dialog or copy mode is open, the relay waits and the pane's status line says `✉ waiting: Claude's input box has a draft`. It sends as soon as the box is clear. The relay shows up in Claude's conversation as a normal message from you, and Claude confirms it in one line. Set `CC_MICRO_MANAGE_RELAY=0` to turn it off; background panes are then read-only.
+> **The relay never touches a draft.** If you've half-typed something in Claude's input box, or a permission dialog or copy mode is open, the relay waits and the pane's status line says `✉ waiting: Claude's input box has a draft`. It sends as soon as the box is clear. The relay shows up in Claude's conversation as a normal message from you, and Claude confirms it in one line. Turn off **Relay messages to background subagents** in [the settings](#configuration) to stop it; background panes are then read-only.
 
 <details>
 <summary>Why not inject messages straight into the subagent?</summary>
@@ -125,27 +125,33 @@ Your text goes through a tmux pane option, never through a shell, so quotes, `$(
 
 ## Configuration
 
-Set these in the `env` block of `~/.claude/settings.json`, or export them before starting `claude`:
+Change settings in Claude Code's **`/config`** panel, where cc-micro-manage's options appear once the plugin is enabled, or under **`/plugin` → cc-micro-manage → Configure**. Restart `claude` to apply them.
 
-| Variable | Default | Description |
+| Setting | Default | What it does |
 |---|---|---|
-| `CC_MICRO_MANAGE_LAYOUT` | `split` | `split`: a column beside Claude, as in the GIF. `window`: tile all subagent panes in a separate `agents` tmux window. |
-| `CC_MICRO_MANAGE_LINGER` | `10` | Seconds a pane stays open after its agent finishes. `-1` keeps it open until you press Enter. |
-| `CC_MICRO_MANAGE_KEY` | `a` | Key after your tmux prefix that opens the message prompt. `none` disables it. An existing binding that isn't ours is never overwritten. |
-| `CC_MICRO_MANAGE_RELAY` | `1` | `0` stops relaying messages for background subagents through Claude's input box. |
-| `CC_MICRO_MANAGE_BORDERS` | `1` | `0` stops the plugin turning on pane-border titles. They're only added to windows with agent panes, and only if you haven't enabled borders yourself. They switch off again when the last agent finishes. |
-| `CC_MICRO_MANAGE_SKIP` | none | Comma-separated agent types to ignore, e.g. `Explore,statusline-setup` |
-| `CC_MICRO_MANAGE_OFF` | none | `1` disables the plugin without uninstalling it. |
-| `CC_MICRO_MANAGE_DEBUG` | none | `1` logs hook payloads to `/tmp/cc-micro-manage-<uid>/debug.jsonl`. |
+| **Pane layout** (`layout`) | `split` | `split`: a column beside Claude, as in the GIF. `window`: tile all subagent panes in a separate `agents` tmux window. |
+| **Seconds a pane stays after its agent finishes** (`linger`) | `10` | `-1` keeps a finished pane open until you press Enter. |
+| **Message key** (`message_key`) | `a` | Key after your tmux prefix that opens the message prompt. `none` disables it. A binding that isn't ours is never overwritten, so pick a free key (tmux already uses `m`, for example). |
+| **Relay messages to background subagents** (`relay`) | on | Off makes background panes read-only. See [Messaging](#messaging-a-subagent). |
+| **Pane border titles** (`borders`) | on | Turns on pane-border titles in windows with agent panes, only if you haven't enabled borders yourself, and switches them off when the last agent finishes. |
+| **Agent types to ignore** (`skip`) | none | Comma-separated, e.g. `Explore,statusline-setup`. |
 
-```json
-{
-  "env": {
-    "CC_MICRO_MANAGE_LINGER": "5",
-    "CC_MICRO_MANAGE_SKIP": "statusline-setup"
-  }
-}
+From your shell, set them at install time with `claude plugin install cc-micro-manage@cc-micro-manage --config linger=5`, or later with:
+
+```bash
+echo '{"linger": "5", "skip": "statusline-setup"}' | claude plugin configure cc-micro-manage@cc-micro-manage --values-stdin
 ```
+
+<details>
+<summary>Environment variables (older setups, per-shell overrides, debugging)</summary>
+
+Each setting also has an environment variable, which wins over the plugin setting: `CC_MICRO_MANAGE_LAYOUT`, `CC_MICRO_MANAGE_LINGER`, `CC_MICRO_MANAGE_KEY`, `CC_MICRO_MANAGE_RELAY` (`0` = off), `CC_MICRO_MANAGE_BORDERS` (`0` = off) and `CC_MICRO_MANAGE_SKIP`. Set them in the `env` block of `~/.claude/settings.json` or export them before starting `claude`. Two exist only as variables:
+
+| Variable | What it does |
+|---|---|
+| `CC_MICRO_MANAGE_OFF` | `1` disables the plugin for that shell without uninstalling it. |
+| `CC_MICRO_MANAGE_DEBUG` | `1` logs hook payloads, and the settings the hooks received, to `/tmp/cc-micro-manage-<uid>/debug.jsonl`. |
+</details>
 
 ## How it works
 
@@ -191,7 +197,7 @@ Each pane runs `cc_micro_manage.py view`. It tails the subagent's transcript, st
 - Is `claude` running **inside tmux**? Check that `echo $TMUX` prints something.
 - Did you restart `claude` after installing? Hooks are loaded at startup.
 - Run `/plugin` and check that `cc-micro-manage` is enabled.
-- Set `CC_MICRO_MANAGE_DEBUG=1`, start a subagent, then check `/tmp/cc-micro-manage-$(id -u)/debug.jsonl`. If it's empty, the hooks aren't firing.
+- Start `claude` with `CC_MICRO_MANAGE_DEBUG=1`, start a subagent, then check `/tmp/cc-micro-manage-$(id -u)/debug.jsonl`. If it's empty, the hooks aren't firing.
 </details>
 
 <details>
@@ -203,7 +209,7 @@ Claude Code changed where it stores subagent transcripts. They are undocumented 
 <details>
 <summary><b><code>prefix + a</code> does nothing</b></summary>
 
-Another binding already uses that key, and cc-micro-manage never overwrites bindings it didn't create. Pick a free key with `CC_MICRO_MANAGE_KEY`, or type into the pane's message box directly.
+Another binding already uses that key, and cc-micro-manage never overwrites bindings it didn't create. Pick a free **Message key** in [the settings](#configuration), or type into the pane's message box directly.
 </details>
 
 <details>

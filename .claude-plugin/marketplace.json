@@ -3,12 +3,15 @@
   "owner": {
     "name": "Debanjan Ganguly"
   },
+  "metadata": {
+    "description": "cc-micro-manage: a live tmux pane for every Claude Code subagent, with a message box to steer it."
+  },
   "plugins": [
     {
       "name": "cc-micro-manage",
       "source": "./",
       "description": "Micro-manage your Claude Code subagents: each one gets a live tmux pane (stacked FIFO, nested ones split their parent) with a message box to steer it, even in the background.",
-      "version": "0.5.0"
+      "version": "0.6.0"
     }
   ]
 }

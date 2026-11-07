@@ -23,7 +23,8 @@ Layout ("split", default): Claude stays on the left, subagents stack in a column
 on the right, oldest on top (FIFO). A nested subagent splits its parent's pane the
 same way. Parent links come from agent-<id>.meta.json (parentAgentId).
 
-Env knobs (settings.json "env" block or your shell):
+Settings: /config (plugin options, see .claude-plugin/plugin.json userConfig),
+or these env vars, which win over the plugin options (settings.json "env" or your shell):
   CC_MICRO_MANAGE_LAYOUT  split (default) | window (tile in a separate "agents" window)
   CC_MICRO_MANAGE_LINGER  seconds a pane stays after its subagent finishes (default 10; -1 = until Enter)
   CC_MICRO_MANAGE_SKIP    comma-separated agent types to ignore
@@ -54,6 +55,26 @@ SELF = os.path.abspath(__file__)
 
 
 # ───────────────────────────── helpers ──────────────────────────────
+
+def _opt(name, default, legacy=None):
+    """A setting: CC_MICRO_MANAGE_<NAME> env (explicit override) wins, then the
+    plugin option the user set in /config (CLAUDE_PLUGIN_OPTION_<NAME>), then
+    the default. Only hook processes see these; panes get what they need as
+    arguments or state files."""
+    v = os.environ.get("CC_MICRO_MANAGE_" + (legacy or name))
+    if v is None or v == "":
+        v = os.environ.get("CLAUDE_PLUGIN_OPTION_" + name)
+    if v is None or str(v).strip() == "":
+        return default
+    return str(v).strip()
+
+
+def _flag(name, default=True, legacy=None):
+    v = _opt(name, None, legacy)
+    if v is None:
+        return default
+    return v.lower() not in ("0", "false", "no", "off")
+
 
 def _safe(s):
     return re.sub(r"[^A-Za-z0-9_.-]", "_", s or "")
@@ -130,7 +151,7 @@ STATE_COLOR = {"running": "yellow", "finished": "green", "error": "red"}
 
 
 def _borders_on(pane):
-    if os.environ.get("CC_MICRO_MANAGE_BORDERS", "1") == "0":
+    if not _flag("BORDERS"):
         return
     win = _tmux("display-message", "-p", "-t", pane, "#{window_id}")
     try:
@@ -224,7 +245,7 @@ def _delivered(key):
 def _bind_key():
     """Register prefix+<key> -> tmux prompt -> `send`. Never clobbers a binding
     that isn't ours."""
-    key = os.environ.get("CC_MICRO_MANAGE_KEY", "a")
+    key = _opt("MESSAGE_KEY", "a", legacy="KEY")
     if not key or key.lower() == "none":
         return
     try:
@@ -260,8 +281,8 @@ def cmd_send(pane):
                                      else "✉ queued, delivered when the subagent wraps up"))
 
 
-BACKGROUND_NOTE = "read-only · background subagent (relay is off: CC_MICRO_MANAGE_RELAY=0)"
-RELAY_STATUS = "type a message · Enter relays it via Claude"
+BACKGROUND_NOTE = "read-only · background subagent (relay is turned off)"
+RELAY_STATUS = ""   # background panes: plain separator, no hint
 
 
 def _relay_on(key):
@@ -412,7 +433,10 @@ def _debug(event, data):
     if os.environ.get("CC_MICRO_MANAGE_DEBUG") == "1":
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(os.path.join(STATE_DIR, "debug.jsonl"), "a") as f:
-            f.write(json.dumps({"event": event, "payload": data, "TMUX_PANE": os.environ.get("TMUX_PANE")}) + "\n")
+            opts = {k: v for k, v in os.environ.items()
+                    if k.startswith(("CLAUDE_PLUGIN_OPTION_", "CC_MICRO_MANAGE_"))}
+            f.write(json.dumps({"event": event, "payload": data, "TMUX_PANE": os.environ.get("TMUX_PANE"),
+                                "options": opts}) + "\n")
 
 
 def cmd_start():
@@ -423,7 +447,7 @@ def cmd_start():
         return
     if not data.get("agent_id") or not data.get("agent_type"):  # internal agents (prompt suggestions, /btw)
         return
-    skip = {s.strip() for s in os.environ.get("CC_MICRO_MANAGE_SKIP", "").split(",") if s.strip()}
+    skip = {s.strip() for s in _opt("SKIP", "").split(",") if s.strip()}
     if data["agent_type"] in skip:
         return
     p = subprocess.Popen([sys.executable, SELF, "place"], stdin=subprocess.PIPE,
@@ -484,7 +508,9 @@ def cmd_place():
     state = os.path.join(STATE_DIR, key + ".pane")
 
     claude_pane = os.environ.get("TMUX_PANE") or _tmux("display-message", "-p", "#{pane_id}")
-    layout = os.environ.get("CC_MICRO_MANAGE_LAYOUT", "split")
+    layout = _opt("LAYOUT", "split").lower()
+    if layout not in ("split", "window"):
+        layout = "split"
     meta = _meta(data)
     parent_id = meta.get("parentAgentId") or ""
     depth = int(meta.get("spawnDepth") or 1)
@@ -499,7 +525,7 @@ def cmd_place():
         "--session", data.get("session_id") or "",
         "--transcript", data.get("transcript_path") or "",
         # tmux panes don't inherit Claude's env, so forward the setting explicitly
-        "--linger", os.environ.get("CC_MICRO_MANAGE_LINGER", "10"),
+        "--linger", _opt("LINGER", "10"),
         "--parent-pane", claude_pane,
         "--title", purpose,
     ])
@@ -566,7 +592,7 @@ def cmd_place():
         _write(state, pane)
         if meta.get("requestShape"):
             _write(os.path.join(STATE_DIR, key + ".shape"), meta["requestShape"])
-        if os.environ.get("CC_MICRO_MANAGE_RELAY") == "0":
+        if not _flag("RELAY"):
             _write(os.path.join(STATE_DIR, key + ".norelay"), "1")
         try:  # the pane itself says which agent it shows (tmux reuses pane ids across restarts)
             _tmux("set-option", "-p", "-t", pane, "@cc_micro_manage_agent", agent_id)
@@ -940,13 +966,14 @@ class _Screen:
         if not self.active:
             return
         w, R, cols = self.real.write, self.rows, self.cols
-        label = f"─ {self.status} "
+        label = f"─ {self.status} " if self.status else ""
         w(f"\033[{R - 2};1H\033[2K{C['dim']}{(label + '─' * cols)[:cols]}{C['r']}")
         # footer first, input last, so the cursor ends up in the input box
-        room = max(cols - 3, 0)
+        room = max(cols - 5, 0)
         options = self.footer if isinstance(self.footer, list) else [self.footer]
         text = next((v for v in options if len(v) <= room), (options[-1] if options else ""))[:room]
-        w(f"\033[{R};1H\033[2K{C['dim']}  {text}{C['r']}")
+        foot = (f"─ {text} " if text else "") + "─" * cols   # a rule, like the status line
+        w(f"\033[{R};1H\033[2K{C['dim']}{foot[:cols]}{C['r']}")
         if self.finished or not self.input_enabled:
             w(f"\033[{R - 1};1H\033[2K")
         else:
