@@ -425,7 +425,70 @@ def cmd_stop():
 C = {
     "dim": "\033[2m", "it": "\033[3m", "b": "\033[1m", "cyan": "\033[36m",
     "red": "\033[31m", "green": "\033[32m", "yel": "\033[33m", "mag": "\033[35m", "r": "\033[0m",
+    "blue": "\033[34m", "ul": "\033[4m",
 }
+
+
+# ── markdown → ANSI ────────────────────────────────────────────────
+_CODE_SPAN = re.compile(r"(`[^`\n]+`)")
+_BOLD = re.compile(r"\*\*(?!\s)(.+?)(?<!\s)\*\*|__(?!\s)(.+?)(?<!\s)__")
+_ITAL = re.compile(r"(?<![\w*])\*(?![\s*])(.+?)(?<![\s*])\*(?![\w*])|(?<![\w_])_(?![\s_])(.+?)(?<![\s_])_(?![\w_])")
+_LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
+_HEAD = re.compile(r"^(#{1,6})\s+(.*)$")
+_BULLET = re.compile(r"^(\s*)[-*+]\s+(.*)$")
+_NUM = re.compile(r"^(\s*)(\d+[.)])\s+(.*)$")
+
+
+def _inline(text):
+    out = []
+    for part in _CODE_SPAN.split(text):
+        if part.startswith("`") and part.endswith("`") and len(part) > 1:
+            out.append(f"{C['yel']}{part[1:-1]}{C['r']}")
+            continue
+        part = _LINK.sub(lambda m: f"{C['ul']}{C['blue']}{m.group(1)}{C['r']}", part)
+        part = _BOLD.sub(lambda m: f"{C['b']}{m.group(1) or m.group(2)}{C['r']}", part)
+        part = _ITAL.sub(lambda m: f"{C['it']}{m.group(1) or m.group(2)}{C['r']}", part)
+        out.append(part)
+    return "".join(out)
+
+
+def _md(text, max_lines=None):
+    """Render the markdown agents write (headings, emphasis, code, lists,
+    quotes, rules) with ANSI styling. Plain text passes through unchanged."""
+    lines, in_code = [], False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code = not in_code
+            lang = stripped[3:].strip()
+            lines.append(f"{C['dim']}{'┌─ ' + lang if in_code and lang else ('┌─' if in_code else '└─')}{C['r']}")
+            continue
+        if in_code:
+            lines.append(f"{C['dim']}│{C['r']} {C['green']}{line}{C['r']}")
+            continue
+        m = _HEAD.match(line)
+        if m:
+            color = C["mag"] if len(m.group(1)) <= 2 else C["cyan"]
+            lines.append(f"{C['b']}{color}{_inline(m.group(2))}{C['r']}")
+            continue
+        if re.fullmatch(r"\s*([-*_])(\s*\1){2,}\s*", line):
+            lines.append(f"{C['dim']}{'─' * 30}{C['r']}")
+            continue
+        m = _BULLET.match(line)
+        if m:
+            lines.append(f"{m.group(1)}{C['cyan']}•{C['r']} {_inline(m.group(2))}")
+            continue
+        m = _NUM.match(line)
+        if m:
+            lines.append(f"{m.group(1)}{C['cyan']}{m.group(2)}{C['r']} {_inline(m.group(3))}")
+            continue
+        if stripped.startswith(">"):
+            lines.append(f"{C['dim']}▎{C['r']} {C['it']}{_inline(stripped.lstrip('>').strip())}{C['r']}")
+            continue
+        lines.append(_inline(line))
+    if max_lines and len(lines) > max_lines:
+        lines = lines[:max_lines] + [f"{C['dim']}… +{len(lines) - max_lines} lines{C['r']}"]
+    return "\n".join(lines)
 
 
 def _trunc(s, n):
@@ -489,7 +552,7 @@ def _render(line, first):
             label = "task" if first else "user"
             print(f"{C['mag']}{C['b']}▶ {label}{C['r']} {C['dim']}{_trunc(content.strip(), 800)}{C['r']}\n")
         else:
-            print(content)
+            print(_md(content) + "\n")
         return
 
     for block in content:
@@ -502,9 +565,14 @@ def _render(line, first):
                 label = "task" if first else "user"
                 print(f"{C['mag']}{C['b']}▶ {label}{C['r']} {C['dim']}{_trunc(text, 800)}{C['r']}\n")
             else:
-                print(text + "\n")
+                print(_md(text) + "\n")
         elif t == "thinking" and block.get("thinking", "").strip():
             print(f"{C['dim']}{C['it']}✻ {_trunc(block['thinking'].strip().replace(chr(10), ' '), 240)}{C['r']}")
+        elif t == "tool_use" and block.get("name") == "SubagentHandback" and isinstance(block.get("input"), dict):
+            report = str(block["input"].get("message") or "").strip()
+            print(f"\n{C['green']}{C['b']}⏎ report to caller{C['r']}")
+            if report:
+                print(_md(report, max_lines=60) + "\n")
         elif t == "tool_use":
             name = block.get("name", "?")
             print(f"{C['cyan']}⏺ {C['b']}{name}{C['r']}{C['cyan']}({_tool_summary(name, block.get('input'))}){C['r']}")

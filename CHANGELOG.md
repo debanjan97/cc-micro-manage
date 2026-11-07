@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+- Panes render the agent's markdown: headings, **bold**, *italics*, `code`, lists, code blocks, quotes, rules and links, instead of plain grey text.
+- A background agent's final report (`SubagentHandback`) is rendered as markdown under "⏎ report to caller", instead of a one-line JSON summary.
+
 ## [0.3.1] - 2026-11-07
 
 ### Fixed
