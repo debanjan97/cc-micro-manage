@@ -10,7 +10,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB)](https://www.python.org/)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#requirements)
 
-![cc-micro-manage demo: three subagents open live panes beside Claude, a nested agent splits its parent's pane, and every pane closes when its agent finishes](demo/demo.gif)
+![cc-micro-manage demo: three subagents open live panes beside Claude, a nested agent splits its parent's pane, and every pane closes when its agent finishes](https://raw.githubusercontent.com/debanjan97/cc-micro-manage/assets/demo.gif)
 
 </div>
 
@@ -87,7 +87,7 @@ each dependency in the package manifest, find where the code uses it. Then give 
 
 Three panes stack up on the right. Lead's pane splits to show its two children (marked `↳`). As each agent finishes, its pane says **✓ finished** and closes.
 
-To regenerate the GIF above, see [`demo/`](demo/): `./demo/setup-demo-repo.sh && vhs demo/demo.tape`.
+To regenerate the GIF above, see [`demo/`](demo/): `./demo/setup-demo-repo.sh && vhs demo/demo.tape`. The GIF itself lives on the [`assets`](https://github.com/debanjan97/cc-micro-manage/tree/assets) branch, which keeps the plugin under the directory's 5 MiB file limit.
 
 ## Messaging a subagent
 

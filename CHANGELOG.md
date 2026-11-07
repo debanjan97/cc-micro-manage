@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+- The demo GIF moved to the `assets` branch, so no file in the plugin exceeds the plugin directory's 5 MiB limit.
+
 ## [0.6.0] - 2026-11-07
 
 ### Added
