@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+- **End-to-end tests** (`tests/`): the real plugin in a private tmux server, with a stand-in for Claude's pane, covering layout, rendering, cleanup, both messaging paths and settings. CI runs them on Linux and macOS, Python 3.9 and 3.13.
+- `CC_MICRO_MANAGE_STATE_DIR` sets where the plugin keeps its state files (the tests use it to stay out of your real sessions).
+
 ### Changed
 - `CC_MICRO_MANAGE_KEY` is now `CC_MICRO_MANAGE_SHORTCUT`, and the `message_key` setting is now `message_shortcut`: the plugin directory's scanner reads names ending in `KEY` as credentials.
 - The demo GIF moved to the `assets` branch, so no file in the plugin exceeds the plugin directory's 5 MiB limit.

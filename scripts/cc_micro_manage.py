@@ -33,6 +33,7 @@ or these env vars, which win over the plugin options (settings.json "env" or you
   CC_MICRO_MANAGE_RELAY   0 = don't relay messages for background subagents through main Claude
   CC_MICRO_MANAGE_BORDERS  0 = don't turn on pane-border titles in agent windows
   CC_MICRO_MANAGE_DEBUG   1 = log hook payloads to /tmp/cc-micro-manage-<uid>/debug.jsonl
+  CC_MICRO_MANAGE_STATE_DIR  where state files live (default /tmp/cc-micro-manage-<uid>; the tests use their own)
 """
 import codecs
 import collections
@@ -50,7 +51,7 @@ import time
 
 # Fixed path: the hook (Claude's env) and the pane (tmux server's env) can see
 # different $TMPDIR values on macOS, so don't derive this from tempfile.
-STATE_DIR = os.path.join("/tmp", "cc-micro-manage-%d" % os.getuid())
+STATE_DIR = os.environ.get("CC_MICRO_MANAGE_STATE_DIR") or os.path.join("/tmp", "cc-micro-manage-%d" % os.getuid())
 SELF = os.path.abspath(__file__)
 
 
