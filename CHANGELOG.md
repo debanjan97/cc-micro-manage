@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+- **Panes look like Claude Code.** They use Claude Code's colours and layout, read off its own panes:
+  - The task and your messages are `❯` prompts on a grey band. Claude's words follow a `⏺`, wrapped with Claude Code's two-space hanging indent.
+  - Tool calls are titled the way Claude Code titles them (`Read(a.go)`, `Update(a.go)`, `Search(pattern: "x")`, `Fetch(url)`, `github - get_issue (MCP)`), with paths relative to the agent's folder. Their `⏺` is grey while the tool runs and turns green or red when it finishes.
+  - Results hang off `⎿`. Reads say `Read 412 lines`, edits show a red and green diff, todo lists show checkboxes, and errors are red.
+  - Markdown tables are box-drawn, inline code is light blue, and code blocks lose their frame.
+  - Background-task notifications collapse to their one-line summary, instead of the raw `<task-notification>` block.
+  - The bottom of the pane is Claude Code's input box: a rule, `❯` with a dimmed hint, a rule, then the footer in grey.
+  - The pane opens with a small welcome box naming the agent, and ends with `✻ … finished · worked for 1m 12s`.
+
 ## [1.0.0] - 2026-11-08
 
 ### Changed

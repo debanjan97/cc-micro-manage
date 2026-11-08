@@ -14,7 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
-from ccmm import messaging, relay, render, settings, state  # noqa: E402
+from ccmm import messaging, relay, render, settings, state, text  # noqa: E402
 from ccmm.placement import describe  # noqa: E402
 from ccmm.stats import Stats, pretty_model  # noqa: E402
 
@@ -103,18 +103,41 @@ class InputBoxTest(unittest.TestCase):
 
 
 class RenderTest(unittest.TestCase):
+    def setUp(self):
+        text.width_override = 60
+        render._renderer = render.Renderer()
+
+    def tearDown(self):
+        text.width_override = None
+
+    def md(self, source, **kw):
+        return [plain(line) for line in render.markdown(source, **kw)]
+
     def test_markdown(self):
-        out = plain(render.markdown("# Title\n**bold** and `code`\n- item\n1. first\n> quoted\n---\n"
-                                    "see [docs](https://x.y)"))
-        self.assertEqual(out.splitlines(), ["Title", "bold and code", "• item", "1. first", "▎ quoted",
-                                            "─" * 30, "see docs"])
+        self.assertEqual(self.md("# Title\n**bold** and `code`\n- item\n1. first\n> quoted\n---\n"
+                                 "see [docs](https://x.y)"),
+                         ["Title", "bold and code", "- item", "1. first", "▎ quoted", "─" * 30, "see docs"])
+
+    def test_inline_code_uses_claude_codes_blue(self):
+        self.assertIn("\x1b[38;5;153mcode", render.inline("`code`"))
 
     def test_code_fence_and_max_lines(self):
-        out = plain(render.markdown("```go\nfunc main() {}\n```\nmore\nlines", max_lines=3))
-        self.assertEqual(out.splitlines(), ["┌─ go", "│ func main() {}", "└─", "… +2 lines"])
+        self.assertEqual(self.md("```go\nfunc main() {}\n```\nmore\nlines\nhere", max_lines=3),
+                         ["func main() {}", "more", "lines", "… +1 lines"])
+
+    def test_table_is_box_drawn(self):
+        out = self.md("| File | What |\n|---|---|\n| a.go | main |\n| bb.go | helper |")
+        self.assertEqual(out[0], "┌───────┬────────┐")
+        self.assertEqual(out[1], "│ File  │  What  │")
+        self.assertEqual(out[3], "│ a.go  │ main   │")
+        self.assertEqual(out[-1], "└───────┴────────┘")
+
+    def test_too_wide_table_falls_back_to_rows(self):
+        out = self.md("| a | b |\n|---|---|\n| " + "x" * 80 + " | y |")
+        self.assertEqual(out[1], "x" * 80 + " │ y")
 
     def test_snake_case_is_not_italic(self):
-        self.assertEqual(plain(render.markdown("my_var_name and 2*3*4")), "my_var_name and 2*3*4")
+        self.assertEqual(self.md("my_var_name and 2*3*4"), ["my_var_name and 2*3*4"])
 
     def test_task_preview(self):
         long_task = "word " * 200
@@ -127,13 +150,24 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(render.tool_summary({"file_path": "/a/b.go"}), "/a/b.go")
         self.assertEqual(render.tool_summary({"other": 1}), '{"other": 1}')
 
+    def test_tool_titles_match_claude_code(self):
+        t = render.tool_title
+        self.assertEqual(t("Bash", {"command": "ls"}), ("Bash", "ls"))
+        self.assertEqual(t("Read", {"file_path": "/repo/a/b.go"}, "/repo"), ("Read", "a/b.go"))
+        self.assertEqual(t("Edit", {"file_path": "/repo/x.py"}, "/repo"), ("Update", "x.py"))
+        self.assertEqual(t("Grep", {"pattern": "TODO", "path": "/repo/src"}, "/repo"),
+                         ("Search", 'pattern: "TODO", path: "src"'))
+        self.assertEqual(t("WebSearch", {"query": "q"}), ("Web Search", '"q"'))
+        self.assertEqual(t("TodoWrite", {"todos": []}), ("Update Todos", ""))
+        self.assertEqual(t("mcp__github__get_issue", {"number": 3}), ("github - get_issue (MCP)", '{"number": 3}'))
+
     def test_agent_state(self):
         ok = json.dumps({"message": {"content": [{"type": "tool_result", "content": "x"}]}})
         bad = json.dumps({"message": {"content": [{"type": "tool_result", "is_error": True}]}})
-        text = json.dumps({"message": {"content": [{"type": "text", "text": "hi"}]}})
+        txt = json.dumps({"message": {"content": [{"type": "text", "text": "hi"}]}})
         self.assertEqual(render.agent_state(ok), "running")
         self.assertEqual(render.agent_state(bad), "error")
-        self.assertIsNone(render.agent_state(text))
+        self.assertIsNone(render.agent_state(txt))
         self.assertIsNone(render.agent_state("not json"))
 
     def rendered(self, record, first=False):
@@ -143,21 +177,67 @@ class RenderTest(unittest.TestCase):
         return plain(out.getvalue())
 
     def test_render_task_text_and_tools(self):
-        self.assertIn("▶ task Describe", self.rendered({"type": "user", "message": {"content": "Describe"}}, True))
+        self.assertIn("❯ Describe", self.rendered({"type": "user", "message": {"content": "Describe"}}, True))
         out = self.rendered({"type": "assistant", "message": {"role": "assistant", "content": [
             {"type": "text", "text": "Found **it**"},
             {"type": "thinking", "thinking": "hmm\nok"},
-            {"type": "tool_use", "name": "Grep", "input": {"pattern": "TODO"}}]}})
-        self.assertIn("Found it", out)
-        self.assertIn("✻ hmm ok", out)
-        self.assertIn("⏺ Grep(TODO)", out)
+            {"type": "tool_use", "id": "t1", "name": "Grep", "input": {"pattern": "TODO"}}]}})
+        self.assertIn("⏺ Found it", out)
+        self.assertIn("✻ Thinking…\n  hmm ok", out)
+        self.assertIn('⏺ Search(pattern: "TODO")', out)
+
+    def test_text_wraps_with_a_hanging_indent(self):
+        out = self.rendered({"type": "assistant", "message": {"content": [
+            {"type": "text", "text": "word " * 30}]}})
+        rows = [r for r in out.splitlines() if r]
+        self.assertTrue(rows[0].startswith("⏺ word"))
+        self.assertTrue(all(r.startswith("  word") for r in rows[1:]))
+        self.assertTrue(all(len(r) <= 60 for r in rows))
 
     def test_render_tool_result_is_capped(self):
         out = self.rendered({"type": "user", "message": {"content": [
             {"type": "tool_result", "content": "1\n2\n3\n4\n5"}]}})
-        self.assertIn("⎿ 1", out)
-        self.assertIn("+2 lines", out)
-        self.assertNotIn("4", out.replace("+2 lines", ""))
+        self.assertEqual(out.splitlines(), ["  ⎿  1", "     2", "     3", "     … +2 lines"])
+
+    def test_results_summarised_like_claude_code(self):
+        call = lambda name, inp: {"type": "assistant", "message": {"content": [   # noqa: E731
+            {"type": "tool_use", "id": name, "name": name, "input": inp}]}}
+        result = lambda name, content: {"type": "user", "message": {"content": [   # noqa: E731
+            {"type": "tool_result", "tool_use_id": name, "content": content}]}}
+        self.rendered(call("Read", {"file_path": "a.go"}))
+        self.assertEqual(self.rendered(result("Read", "1\n2\n3\n4")).strip(), "⎿  Read 4 lines")
+        self.rendered(call("Edit", {"file_path": "a.go", "old_string": "x = 1", "new_string": "x = 2\ny = 3"}))
+        out = self.rendered(result("Edit", "ok")).splitlines()
+        self.assertEqual(out[0], "  ⎿  Updated a.go (+2 -1)")
+        self.assertEqual([r.strip() for r in out[1:]], ["- x = 1", "+ x = 2", "+ y = 3"])
+        self.rendered(call("TodoWrite", {"todos": [{"content": "plan", "status": "completed"},
+                                                   {"content": "build", "status": "in_progress"}]}))
+        self.assertEqual(self.rendered(result("TodoWrite", "ok")).splitlines(), ["  ⎿  ☒ plan", "     ☐ build"])
+
+    def test_tool_dot_turns_green_or_red_when_its_result_arrives(self):
+        class CountingOut(io.StringIO):
+            emitted, repaints = 0, []
+
+            def write(self, data):
+                self.emitted += data.count("\n")
+                return super().write(data)
+
+            def repaint(self, number, change):
+                self.repaints.append((number, change(render.paint("⏺", "grey") + " Bash(ls)")))
+
+        out = CountingOut()
+        with redirect_stdout(out):
+            render.render_record(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]}}), False)
+            render.render_record(json.dumps({"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "a"}]}}), False)
+        self.assertEqual(out.repaints, [(1, render.paint("⏺", "ok") + " Bash(ls)")])   # line 0 is the blank
+
+    def test_task_notification_collapses_to_its_summary(self):
+        out = self.rendered({"type": "user", "message": {"content":
+            "[SYSTEM NOTIFICATION]\n<task-notification><status>failed</status>"
+            "<summary>Background command \"wait\" failed</summary></task-notification>"}})
+        self.assertEqual(out.strip(), '⏺ Background command "wait" failed')
 
     def test_render_skips_reminders_meta_and_attachments(self):
         reminder = {"type": "user", "message": {"content": "<system-reminder>secret</system-reminder>"}}
@@ -168,11 +248,24 @@ class RenderTest(unittest.TestCase):
     def test_render_forwarded_message_and_handback(self):
         out = self.rendered({"type": "attachment", "attachment": {
             "type": "queued_command", "prompt": "also X", "origin": {"kind": "coordinator"}}})
-        self.assertIn("✉ received from Claude: also X", out)
+        self.assertIn("❯ also X\n  ⎿  received from Claude", out)
         out = self.rendered({"type": "assistant", "message": {"content": [
             {"type": "tool_use", "name": "SubagentHandback", "input": {"message": "# Done\nall good"}}]}})
-        self.assertIn("⏎ report to caller", out)
-        self.assertIn("all good", out)
+        self.assertIn("⏺ Report to caller", out)
+        self.assertIn("  all good", out)
+
+
+class WrapTest(unittest.TestCase):
+    def test_hanging_indent_and_colours_carry_over(self):
+        rows = text.wrap("aa " + text.C["b"] + "bb cc dd" + text.C["r"] + " ee", 10, "⏺ ", "  ")
+        self.assertEqual([plain(r) for r in rows], ["⏺ aa bb cc", "  dd ee"])
+        self.assertTrue(rows[1].startswith("  " + text.C["b"]), "bold continues on the next row")
+
+    def test_long_words_are_split(self):
+        self.assertEqual([plain(r) for r in text.wrap("x" * 12, 10, "  ")], ["  xxxxxxxx", "  xxxx"])
+
+    def test_wide_characters_count_double(self):
+        self.assertEqual(text.visible_width("日本"), 4)
 
 
 class StatsTest(unittest.TestCase):

@@ -31,8 +31,9 @@ A plugin installed from a local marketplace loads in place, so restart `claude` 
 | `placement` | opens an agent's pane and records it |
 | `layout` | the column beside Claude, relayout, border titles, status dots |
 | `viewer` | the program in each agent pane: follows the transcript, shows messages, closes at the end |
-| `screen` | that pane's terminal UI: scrolling output plus a message box and footer |
-| `render` | transcript records to coloured text, markdown included |
+| `screen` | that pane's terminal UI: scrolling output plus Claude Code's input box and footer |
+| `render` | transcript records to text drawn like Claude Code's: prompts, `⏺` blocks, `⎿` results, markdown and tables |
+| `text` | Claude Code's colours, visible width, and wrapping with a hanging indent |
 | `stats` | the footer: model, effort, tokens, elapsed time |
 | `messaging` | queueing your messages, and delivery at SubagentStop |
 | `relay` | delivery to background agents through Claude's input box |

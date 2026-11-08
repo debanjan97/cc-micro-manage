@@ -10,8 +10,8 @@ from . import claude_files, program, settings, state, tmux
 
 ALREADY_FINISHED = "That subagent has already finished; message not sent."
 RELAY_OFF = "read-only · background subagent (relay is turned off)"
-QUEUED_FOR_STOP = "✉ queued, delivered when the subagent wraps up"
-QUEUED_FOR_RELAY = "✉ relaying via Claude"
+QUEUED_FOR_STOP = "queued, delivered when the subagent wraps up"
+QUEUED_FOR_RELAY = "relaying via Claude"
 
 AGENT_OPTION = "@cc_micro_manage_agent"     # which agent a pane shows
 MESSAGE_OPTION = "@cc_micro_manage_msg"     # the text typed at the shortcut prompt

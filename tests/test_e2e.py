@@ -200,9 +200,9 @@ class E2E(unittest.TestCase):
 
         self.write("a1", assistant(text("Found **three** files"), tool_use("Bash", {"command": "ls"})),
                    tool_result("a.go\nb.go"))
-        self.wait_for_screen(pane, "▶ task", "List every file",
+        self.wait_for_screen(pane, "❯ List every file",
                              "Found three files",              # markdown rendered, ** stripped
-                             "⏺ Bash(ls)", "a.go",
+                             "⏺ Bash(ls)", "⎿  a.go",
                              "Haiku 5.5", "12.0k")             # footer: model, context tokens
 
     def test_finish_closes_pane_and_cleans_state(self):
@@ -314,7 +314,7 @@ class E2E(unittest.TestCase):
     def test_foreground_message_delivered_at_stop(self):
         self.start("fg", "Foreground")
         pane = self.pane_of("fg")
-        self.wait_for(lambda: "✉ ›" in self.capture(pane), what="message box")
+        self.wait_for(lambda: "❯" in self.capture(pane), what="message box")
         self.type_in(pane, "also check the $(refresh) path")
         self.wait_for(lambda: os.path.exists(os.path.join(self.state, "fg.inbox")), what="queued message")
 
@@ -329,7 +329,7 @@ class E2E(unittest.TestCase):
     def test_background_message_relayed_through_claude(self):
         self.start("bg", "Counter", shape="background")
         pane = self.pane_of("bg")
-        self.wait_for(lambda: "✉ ›" in self.capture(pane), what="message box")
+        self.wait_for(lambda: "❯" in self.capture(pane), what="message box")
         self.type_in(pane, 'add "quoted" #{x} to each step')
         line = self.wait_for(self.claude_input,
                              what="relay typed into Claude")
@@ -348,7 +348,7 @@ class E2E(unittest.TestCase):
     def test_relay_waits_for_a_draft_and_never_clobbers_it(self):
         self.start("bg", "Counter", shape="background")
         pane = self.pane_of("bg")
-        self.wait_for(lambda: "✉ ›" in self.capture(pane), what="message box")
+        self.wait_for(lambda: "❯" in self.capture(pane), what="message box")
         self.tmux("send-keys", "-t", self.claude, "-l", "my half-typed draft")
         self.type_in(pane, "steer me")
         self.wait_for(lambda: "has a draft" in self.capture(pane), what="waiting-for-draft status")

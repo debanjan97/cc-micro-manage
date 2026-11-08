@@ -35,7 +35,7 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 
 ## Features
 
-- 🪟 **One live pane per subagent.** Each pane shows the subagent's task, its messages, its thinking, and every tool call with a short result.
+- 🪟 **One live pane per subagent, drawn like Claude Code.** Each pane shows the subagent's task, its messages, its thinking, and every tool call with a short result, using Claude Code's own look: `⏺ Bash(…)` with `⎿` results, a dot that turns green or red when the tool finishes, diffs for edits, checkboxes for todos, and box-drawn tables.
 - 🏷️ **Panes named by purpose.** Each pane's border shows what the agent is for, such as `● Scout: describe every .go file`. The dot is yellow while it runs, red after a failed tool call, and green when it finishes.
 - 📊 **Footer like Claude Code's.** Each pane shows the model, effort level, context size, output tokens and elapsed time for its agent.
 - 📚 **FIFO stack.** Panes stack on the right, oldest on top, while Claude keeps the left 55%. When an agent finishes, its pane closes and the rest move up evenly.
@@ -88,7 +88,7 @@ the README, one lists TODO/FIXME comments as file:line; combine their answers. (
 each dependency in the package manifest, find where the code uses it. Then give me a 3-line summary.
 ```
 
-Three panes stack up on the right. Lead's pane splits to show its two children (marked `↳`). As each agent finishes, its pane says **✓ finished** and closes.
+Three panes stack up on the right. Lead's pane splits to show its two children (marked `↳`). As each agent finishes, its pane says **✻ … finished · worked for 1m 12s** and closes.
 
 To regenerate the GIF above, see [`demo/`](demo/): `./demo/setup-demo-repo.sh && vhs demo/demo.tape`. The GIF itself lives on the [`assets`](https://github.com/debanjan97/cc-micro-manage/tree/assets) branch, which keeps the plugin under the directory's 5 MiB file limit.
 
@@ -97,16 +97,19 @@ To regenerate the GIF above, see [`demo/`](demo/): `./demo/setup-demo-repo.sh &&
 Every pane has a message box on its bottom line. Click the pane (with tmux mouse mode) or move to it with `prefix + arrow`, type, and press **Enter**. You can also press **`prefix + a`** from anywhere in the pane to type into tmux's own prompt.
 
 ```
-✉ you: also check the refresh-token path (queued — delivered when it wraps up)
-─ ✉ queued · type another, or wait for it to wrap up ───────────────
-✉ › |
+❯ also check the refresh-token path
+  ⎿  queued · delivered when it wraps up
+─────────────────────────────────────────────────────────────────────
+❯ queued · type another, or wait for it to wrap up
+─────────────────────────────────────────────────────────────────────
+  Haiku 5.5 · medium effort · 41.0k context · 2.3k out · 1m 37s
 ```
 
 How the message gets there depends on how Claude started the subagent:
 
 | Subagent | How your message reaches it |
 |---|---|
-| **Background** (the usual case in interactive Claude Code) | **Relayed through Claude.** Once Claude's input box is empty, the plugin types a one-line request into it for you ("pass this on to subagent … with SendMessage"), and Claude forwards it with its own messaging tool. The agent picks it up at its next tool call, usually within seconds, and the pane shows `✉ received from Claude`. |
+| **Background** (the usual case in interactive Claude Code) | **Relayed through Claude.** Once Claude's input box is empty, the plugin types a one-line request into it for you ("pass this on to subagent … with SendMessage"), and Claude forwards it with its own messaging tool. The agent picks it up at its next tool call, usually within seconds, and the pane shows `⎿  received from Claude`. |
 | **Foreground** (e.g. `claude -p` runs) | **Delivered when it tries to finish.** The plugin holds the subagent from finishing and passes your message as the reason, so it keeps working and mentions what it did about it. The calling agent is told what you sent, so the extra work isn't mistaken for going off-brief. |
 
 ```

@@ -7,7 +7,9 @@ import time
 
 from . import claude_files, layout, messaging, program, state, tmux
 from .relay import Relay
-from .render import C, agent_state, paint, render_record
+from . import render
+from .render import agent_state, render_record
+from .text import paint
 from .screen import DEFAULT_STATUS, Screen
 from .stats import Stats
 
@@ -79,8 +81,9 @@ class Viewer:
         self._request_relayout()
 
     def _print_header(self):
-        head = f"{self.purpose} {paint(f'({self.agent_type})', 'dim')}" if self.purpose else self.agent_type
-        print(f"{C['b']}{C['yel']}● {C['r']}{C['b']}{head}{C['r']} {paint(self.agent_id[:8], 'dim')}\n")
+        title = self.purpose or self.agent_type
+        detail = " · ".join(p for p in (self.agent_type if self.purpose else "", self.agent_id[:8]) if p)
+        render.header(title, detail)
         sys.stdout.flush()
 
     def _find_transcript(self):
@@ -94,7 +97,7 @@ class Viewer:
             if hinted and os.path.exists(hinted):
                 return hinted
             if time.time() - started > FIND_TRANSCRIPT_FOR:
-                print(paint("Couldn't find this subagent's transcript.", "red"))
+                render.note("Couldn't find this subagent's transcript.", "err")
                 return None
             self.screen.poll(0.25)
 
@@ -150,11 +153,11 @@ class Viewer:
         if idle > FINISHED_GRACE and claude_files.read_meta(self.session_transcript, self.agent_id).get("finished"):
             return True     # Claude Code marks background agents finished in their meta file
         if self.claude_pane and not tmux.is_alive(self.claude_pane):
-            print(f"\n{paint('Claude pane closed; stopping.', 'dim')}")
+            render.done_line("Claude pane closed; stopping")
             self.linger = min(self.linger, CLAUDE_GONE_LINGER) if self.linger >= 0 else CLAUDE_GONE_LINGER
             return True
         if idle > GIVE_UP_IDLE:
-            print(f"\n{paint('No activity for 30 min; stopping.', 'dim')}")
+            render.done_line("No activity for 30 min; stopping")
             return True
         return False
 
@@ -177,38 +180,41 @@ class Viewer:
         if error:
             self.screen.set_status(error)
         elif how == "relay":
-            self.screen.set_status("✉ relaying via Claude · type another")
+            self.screen.set_status("relaying via Claude · type another")
         else:
-            self.screen.set_status("✉ queued · type another, or wait for it to wrap up")
+            self.screen.set_status("queued · type another, or wait for it to wrap up")
 
     def _show_messages(self):
         inbox, delivered = self.agent.inbox, self.agent.delivered
         for text in inbox[self.seen_inbox:]:
-            print(f"{C['yel']}✉ you: {text}{C['r']} {paint('(queued — delivered when it wraps up)', 'dim')}")
+            print()
+            render.prompt(text)
+            render.note("queued · delivered when it wraps up")
         if delivered > self.seen_delivered:
-            print(f"{C['yel']}{C['b']}✉ delivered {delivered - self.seen_delivered} message(s){C['r']}\n")
+            render.note(f"delivered {delivered - self.seen_delivered} message(s)", "ok")
             self.screen.set_status(DEFAULT_STATUS)
         self.seen_inbox, self.seen_delivered = len(inbox), max(self.seen_delivered, delivered)
 
         to_relay = self.agent.relay_queue
         for text in to_relay[self.seen_relay:]:
-            print(f"{C['yel']}✉ you: {text}{C['r']} {paint('(relaying via Claude)', 'dim')}")
+            print()
+            render.prompt(text)
+            render.note("relaying via Claude")
             self.relay.add(text)
         self.seen_relay = len(to_relay)
 
     def _relay_step(self, now):
         event = self.relay.step(now)
         if event == "sent":
-            print(f"{C['yel']}{C['b']}✉ handed to Claude{C['r']} "
-                  + paint("(it lands at the agent's next tool call)", "dim") + "\n")
+            render.note("handed to Claude · it lands at the agent's next tool call")
         elif event == "failed":
-            print(paint("✉ typed into Claude's input but couldn't send it; check that pane", "red"))
+            render.note("typed into Claude's input but couldn't send it; check that pane", "err")
         if event in ("sent", "failed"):
             self.relay_note = ""
             self.screen.set_status(RELAY_STATUS)
         elif event in ("waiting", "waiting-draft"):
-            note = ("✉ waiting: Claude's input box has a draft" if event == "waiting-draft"
-                    else "✉ waiting for Claude's input box")
+            note = ("waiting: Claude's input box has a draft" if event == "waiting-draft"
+                    else "waiting for Claude's input box")
             if note != self.relay_note:
                 self.relay_note = note
                 self.screen.set_status(note)
@@ -219,10 +225,11 @@ class Viewer:
         if self.my_pane:
             layout.show_state(self.my_pane, "finished")
         self.screen.set_footer(self.stats.footers())
-        print(f"\n{C['green']}{C['b']}✓ {self.purpose or self.agent_type} finished{C['r']}")
+        worked = self.stats.elapsed()
+        render.done_line(f"{self.purpose or self.agent_type} finished" + (f" · worked for {worked}" if worked else ""))
         undelivered = len(self.agent.undelivered) + (len(self.relay.waiting) if followed else 0)
         if undelivered > 0:
-            print(paint(f"✉ {undelivered} message(s) arrived too late to deliver", "red"))
+            render.note(f"{undelivered} message(s) arrived too late to deliver", "err")
         sys.stdout.flush()
         self.agent.remove_all()
 
@@ -243,7 +250,7 @@ class Viewer:
                 self.screen.poll(0.5)
             return
         try:
-            input(paint("press Enter to close", "dim"))
+            input(paint("press Enter to close", "grey"))
         except EOFError:
             pass
 

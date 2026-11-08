@@ -8,7 +8,8 @@ Modules, from the outside in:
   layout       the column beside Claude, relayout, border titles, status dots
   viewer       the program running in each agent pane
   screen       that pane's terminal UI: scrolling output plus a message box
-  render       transcript records -> coloured text (markdown included)
+  render       transcript records -> text drawn like Claude Code's
+  text         Claude Code's colours, visible width, wrapping
   stats        the footer: model, effort, tokens, elapsed time
   messaging    queueing your messages; delivery at SubagentStop
   relay        delivery to background agents through Claude's input box

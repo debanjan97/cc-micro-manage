@@ -1,5 +1,6 @@
-"""An agent pane's terminal UI: output scrolls at the top, and the bottom three
-rows hold a status rule, a message box and the footer.
+"""An agent pane's terminal UI, laid out like Claude Code's: output scrolls at
+the top, and the bottom four rows hold a rule, the ❯ message box, a rule and
+the grey status line.
 
 Uses a terminal scroll region (DECSTBM) so streamed output never touches what
 you're typing. Falls back to plain output if stdin isn't a terminal or the
@@ -13,12 +14,12 @@ import signal
 import sys
 import time
 
-from .render import C
+from .text import C, visible_width, wrap
 
-MIN_ROWS = 7
-CHROME_ROWS = 3        # status rule, message box, footer
+MIN_ROWS = 8
+CHROME_ROWS = 4        # rule, message box, rule, footer
 HISTORY = 400          # lines replayed after a resize
-DEFAULT_STATUS = "type a message for this agent · Enter to send"
+DEFAULT_STATUS = "Message this subagent (Enter to send)"
 ENTER, BACKSPACE, CLEAR_LINE, ESCAPE = "\r\n", "\x7f\x08", "\x15", "\x1b"
 
 
@@ -31,6 +32,8 @@ class Screen:
         self.partial = ""               # output line not yet complete
         self.in_escape = False
         self.history = collections.deque(maxlen=HISTORY)
+        self.emitted = 0                # output lines so far; render.py numbers lines by it
+        self.repaint_floor = 0          # lines before this were re-wrapped by a resize
         self.footer = [""]              # alternatives, widest first
         self.status = DEFAULT_STATUS
         self.input_enabled = True
@@ -94,47 +97,73 @@ class Screen:
 
     def _resize(self):
         self.cols, self.rows = self._size()
-        # clear (tmux reflow leaves fragments of old lines), then replay the tail
+        # clear (tmux reflow leaves fragments of old lines), then replay the tail,
+        # re-wrapped so every history line is one row again
+        rows = [r for line in self.history for r in self._fit(line)]
+        self.history = collections.deque(rows, maxlen=HISTORY)
+        self.repaint_floor = self.emitted
         self.real.write(f"\033[r\033[2J\033[1;{self._last_output_row}r")
         for line in list(self.history)[-self._last_output_row:]:
             self.real.write(f"\033[{self._last_output_row};1H\n{line}")
         self.redraw()
 
+    def _fit(self, line):
+        return [line] if visible_width(line) <= self.cols else wrap(line, self.cols)
+
     def redraw(self):
-        """Redraw the bottom three rows: status rule, message box, footer."""
+        """Redraw the bottom four rows: rule, message box, rule, footer."""
         if not self.active:
             return
-        self._draw_status_rule()
-        self._draw_footer()          # footer before the box, so the cursor ends in the box
-        self._draw_message_box()
+        rule = f"{C['rule']}{'─' * self.cols}{C['r']}"
+        self._draw_row(self.rows - 3, rule)
+        self._draw_row(self.rows - 1, rule)
+        self._draw_footer()
+        self._draw_message_box()     # last, so the cursor ends in the box
         self.real.flush()
 
-    def _draw_status_rule(self):
-        label = f"─ {self.status} " if self.status else ""
-        self._draw_row(self.rows - 2, f"{C['dim']}{(label + '─' * self.cols)[:self.cols]}{C['r']}")
-
     def _draw_footer(self):
-        room = max(self.cols - 5, 0)
+        room = max(self.cols - 3, 0)
         fitting = next((v for v in self.footer if len(v) <= room), self.footer[-1] if self.footer else "")
-        text = fitting[:room]
-        rule = (f"─ {text} " if text else "") + "─" * self.cols
-        self._draw_row(self.rows, f"{C['dim']}{rule[:self.cols]}{C['r']}")
+        self._draw_row(self.rows, f"  {C['grey']}{fitting[:room]}{C['r']}")
 
     def _draw_message_box(self):
-        if self.finished or not self.input_enabled:
-            self._draw_row(self.rows - 1, "")
-        else:
-            shown = self.typed[-max(self.cols - 5, 1):]
-            self._draw_row(self.rows - 1, f"{C['yel']}✉ ›{C['r']} {shown}")
+        room = max(self.cols - 3, 1)
+        if self.typed and self.input_enabled and not self.finished:
+            self._draw_row(self.rows - 2, f"❯ {self.typed[-room:]}")
+            return
+        hint = self.status[:room]        # Claude Code shows hints dimmed in the empty box
+        self._draw_row(self.rows - 2, f"❯ {C['dim']}{hint}{C['r']}")
+        if hint:
+            self.real.write(f"\033[{self.rows - 2};3H")     # cursor at the start, like Claude Code
 
     def _draw_row(self, row, text):
         self.real.write(f"\033[{row};1H\033[2K{text}")
 
     def _emit(self, line):
-        self.history.append(line)
-        # to the bottom of the scroll region; the newline scrolls it
-        self.real.write(f"\033[{self._last_output_row};1H\n{line}")
+        for row in self._fit(line):
+            self.history.append(row)
+            self.emitted += 1
+            # to the bottom of the scroll region; the newline scrolls it
+            self.real.write(f"\033[{self._last_output_row};1H\n{row}")
         self.redraw()
+
+    def repaint(self, number, change):
+        """Rewrite output line `number` (counted by `emitted`) with change(line),
+        if it is still on screen. Lets a tool's ⏺ turn green when it finishes."""
+        if not self.active or number < self.repaint_floor or number >= self.emitted:
+            return
+        back = self.emitted - 1 - number
+        if back >= len(self.history):
+            return
+        index = len(self.history) - 1 - back
+        new = change(self.history[index])
+        if new == self.history[index]:
+            return
+        self.history[index] = new
+        row = self._last_output_row - back
+        if row >= 1:
+            self.real.write(f"\033[{row};1H\033[2K{new}")
+            self.redraw()
 
     def set_status(self, text):
         self.status = text
