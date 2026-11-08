@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-08
+
 ### Added
 - **Ghostty support (macOS).** Run `claude` straight in Ghostty 1.3 or newer, without tmux, and subagent panes open as native Ghostty splits through Ghostty's AppleScript interface. The column beside Claude, nested agents, the message box and the `window` layout (an `agents` tab) all work, and focus stays in Claude's pane. Background subagents' panes are read-only there, since the relay needs to read Claude's input box, which Ghostty can't show. Claude in tmux inside Ghostty still uses tmux.
 
