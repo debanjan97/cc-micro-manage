@@ -286,9 +286,18 @@ class E2E(unittest.TestCase):
         self.assertNotIn("ex", self.panes())
 
     def test_shortcut_setting_binds_key(self):
+        self.tmux("unbind-key", "-T", "prefix", "g")       # some tmux versions bind g by default
         self.start("a1", "Bound", CLAUDE_PLUGIN_OPTION_MESSAGE_SHORTCUT="g")
         self.pane_of("a1")
         self.assertIn("cc_micro_manage", self.tmux("list-keys", "-T", "prefix", "g"))
+
+    def test_shortcut_never_replaces_your_binding(self):
+        self.tmux("bind-key", "-T", "prefix", "g", "display-message", "mine")
+        self.start("a1", "Bound", CLAUDE_PLUGIN_OPTION_MESSAGE_SHORTCUT="g")
+        self.pane_of("a1")
+        binding = self.tmux("list-keys", "-T", "prefix", "g")
+        self.assertIn("mine", binding)
+        self.assertNotIn("cc_micro_manage", binding)
 
     def test_no_tmux_does_nothing(self):
         env_tmux, self.tmux_env = self.tmux_env, ""
