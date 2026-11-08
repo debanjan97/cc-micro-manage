@@ -4,6 +4,8 @@
 
 **Watch every Claude Code subagent work, live, in its own tmux pane.**
 
+*For fellow control freaks: hover over your subagents the way your manager micromanages you.<br>(If you still have one.)*
+
 [![tests](https://github.com/debanjan97/cc-micro-manage/actions/workflows/test.yml/badge.svg)](https://github.com/debanjan97/cc-micro-manage/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/plugins)
