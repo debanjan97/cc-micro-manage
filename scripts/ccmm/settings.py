@@ -84,6 +84,19 @@ def inside_tmux():
     return bool(os.environ.get("TMUX"))
 
 
+def color_depth():
+    """ "24bit" when Claude Code draws in truecolor, else "256". Claude decides
+    from its own environment (as the supports-color library does), and panes
+    don't inherit that environment, so this is worked out here and passed on."""
+    if os.environ.get("COLORTERM", "").lower() in ("truecolor", "24bit"):
+        return "24bit"
+    if os.environ.get("TERM", "") in ("xterm-ghostty", "xterm-kitty", "wezterm") or os.environ.get("TERM", "").endswith("-direct"):
+        return "24bit"
+    if os.environ.get("TERM_PROGRAM") == "iTerm.app":
+        return "24bit"
+    return "256"
+
+
 def terminal():
     """Where Claude runs: "tmux", "ghostty" (macOS, without tmux) or None.
     tmux wins, so Claude in tmux inside Ghostty uses tmux panes."""

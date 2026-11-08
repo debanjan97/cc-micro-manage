@@ -208,11 +208,28 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(self.rendered(result("Read", "1\n2\n3\n4")).strip(), "⎿  Read 4 lines")
         self.rendered(call("Edit", {"file_path": "a.go", "old_string": "x = 1", "new_string": "x = 2\ny = 3"}))
         out = self.rendered(result("Edit", "ok")).splitlines()
-        self.assertEqual(out[0], "  ⎿  Updated a.go (+2 -1)")
+        self.assertEqual(out[0], "  ⎿  Added 2 lines, removed 1 line")
         self.assertEqual([r.strip() for r in out[1:]], ["- x = 1", "+ x = 2", "+ y = 3"])
         self.rendered(call("TodoWrite", {"todos": [{"content": "plan", "status": "completed"},
                                                    {"content": "build", "status": "in_progress"}]}))
         self.assertEqual(self.rendered(result("TodoWrite", "ok")).splitlines(), ["  ⎿  ☒ plan", "     ☐ build"])
+
+    def test_parallel_results_land_under_their_own_call(self):
+        call = lambda i, cmd: {"type": "tool_use", "id": i, "name": "Bash", "input": {"command": cmd}}   # noqa: E731
+        result = lambda i, text, err=False: {"type": "tool_result", "tool_use_id": i,   # noqa: E731
+                                             "content": text, "is_error": err}
+        self.rendered({"type": "assistant", "message": {"content": [call("a", "ls"), call("b", "cat x")]}})
+        out = self.rendered({"type": "user", "message": {"content": [result("b", "no x", True), result("a", "f")]}})
+        self.assertEqual([r for r in out.splitlines() if r.strip()],
+                         ["  ⎿  no x", "⏺ Bash(ls)", "  ⎿  f"],
+                         "b was printed last so its result goes straight under it; a's call is repeated")
+
+    def test_handback_receipt_is_hidden(self):
+        self.rendered({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "h", "name": "SubagentHandback", "input": {"message": "done"}}]}})
+        out = self.rendered({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "h", "content": '{"success":true}'}]}})
+        self.assertEqual(out, "")
 
     def test_tool_dot_turns_green_or_red_when_its_result_arrives(self):
         class CountingOut(io.StringIO):
@@ -398,6 +415,23 @@ class GhosttyTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"TERM_PROGRAM": "ghostty"}, clear=True), \
                 mock.patch.object(settings.sys, "platform", "linux"):
             self.assertIsNone(settings.terminal(), "Ghostty's scripting is macOS-only")
+
+    def test_color_depth_follows_claudes_terminal(self):
+        cases = [({"COLORTERM": "truecolor"}, "24bit"), ({"TERM": "xterm-ghostty"}, "24bit"),
+                 ({"TERM": "tmux-256color"}, "256"), ({"TERM": "screen", "COLORTERM": "24bit"}, "24bit"), ({}, "256")]
+        for env, depth in cases:
+            with mock.patch.dict(os.environ, env, clear=True):
+                self.assertEqual(settings.color_depth(), depth, env)
+
+    def test_palettes_cover_the_same_colours(self):
+        self.assertEqual(set(text.COLORS_256), set(text.COLORS_24BIT))
+        try:
+            text.use_colors("24bit")
+            self.assertEqual(text.C["claude"], "\033[38;2;215;119;87m")
+            text.use_colors("256")
+            self.assertEqual(text.C["claude"], "\033[38;5;173m")
+        finally:
+            text.use_colors("256")
 
     def test_quote(self):
         self.assertEqual(ghostty.quote('say "hi" \\ bye'), '"say \\"hi\\" \\\\ bye"')

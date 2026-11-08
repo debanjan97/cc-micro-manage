@@ -16,6 +16,7 @@ TASK_PREVIEW = {True: 240, False: 400}      # first message (the task) vs later 
 RESULT_LINES = 3
 REPORT_LINES = 60
 DIFF_LINES = 8
+HANDBACK = "SubagentHandback"   # the tool a subagent reports back with
 
 DOT = "⏺"
 RESULT = "  ⎿  "
@@ -295,7 +296,8 @@ def done_line(text):
 class Renderer:
     def __init__(self):
         self.cwd = None
-        self.calls = {}        # tool_use_id -> (name, input, output line of its ⏺ or None)
+        self.calls = {}        # tool_use_id -> (name, input, output line of its ⏺ or None, title)
+        self.last_call = None  # the call whose line was printed last, if nothing came after it
 
     def record(self, record_line, first):
         """Print one transcript line. `first` marks the agent's first message (its task)."""
@@ -327,6 +329,7 @@ class Renderer:
         if not (isinstance(attachment, dict) and attachment.get("type") == "queued_command"
                 and attachment.get("prompt")):
             return False
+        self.last_call = None
         sender = "Claude" if (attachment.get("origin") or {}).get("kind") == "coordinator" else "caller"
         blank()
         prompt(truncate(without_reminders(str(attachment["prompt"])), 300))
@@ -334,6 +337,7 @@ class Renderer:
         return True
 
     def _text(self, role, text, first):
+        self.last_call = None
         text = without_reminders(text)
         if not text:
             return
@@ -355,6 +359,8 @@ class Renderer:
 
     def _block(self, role, block, first):
         kind = block.get("type")
+        if kind not in ("tool_use", "tool_result"):
+            self.last_call = None
         if kind == "text":
             self._text(role, block.get("text"), first)
         elif kind == "thinking" and block.get("thinking", "").strip():
@@ -362,8 +368,9 @@ class Renderer:
             blank()
             emit([paint("✻ Thinking…", "grey", "it")])
             emit(wrap(paint(thought, "grey", "it"), None, INDENT))
-        elif kind == "tool_use" and block.get("name") == "SubagentHandback" and isinstance(block.get("input"), dict):
+        elif kind == "tool_use" and block.get("name") == HANDBACK and isinstance(block.get("input"), dict):
             self._handback(block["input"])
+            self.calls[block.get("id")] = (HANDBACK, None, None, "")
         elif kind == "tool_use":
             self._tool_use(block)
         elif kind == "tool_result":
@@ -375,15 +382,24 @@ class Renderer:
         title = f"{C['b']}{label}{C['r']}" + (f"({arg})" if arg else "")
         blank()
         line = emit(wrap(title, None, paint(DOT, "grey") + " ", INDENT))
-        self.calls[block.get("id")] = (name, inp, line)
+        self.calls[block.get("id")] = (name, inp, line, title)
+        self.last_call = block.get("id")
 
     def _tool_result(self, block):
-        name, inp, line = self.calls.pop(block.get("tool_use_id"), (None, None, None))
+        call_id = block.get("tool_use_id")
+        name, inp, line, title = self.calls.pop(call_id, (None, None, None, ""))
         failed = bool(block.get("is_error"))
+        if name == HANDBACK and not failed:
+            return                 # "report delivered": Claude Code doesn't show it either
+        dot = paint(DOT, "err" if failed else "ok")
         repaint = getattr(sys.stdout, "repaint", None)
         if line is not None and repaint:
-            dot = paint(DOT, "err" if failed else "ok")
             repaint(line, lambda row: row.replace(paint(DOT, "grey"), dot, 1))
+        if title and call_id != self.last_call:
+            # parallel calls: others were printed since, so show which call this result is for
+            blank()
+            emit(wrap(title, None, dot + " ", INDENT))
+        self.last_call = None
         text = result_text(block.get("content")).strip()
         if failed:
             self._lines(text.splitlines() or ["Error"], "err")
@@ -421,7 +437,7 @@ class Renderer:
         for edit in edits:
             removed += str(edit.get("old_string") or "").splitlines()
             added += str(edit.get("new_string") or "").splitlines()
-        note(f"Updated {C['b']}{path}{C['r']}{C['grey']} (+{len(added)} -{len(removed)})")
+        note(_added_removed(len(added), len(removed)) or f"Updated {C['b']}{path}{C['r']}")
         width = max(terminal_width() - len(UNDER), 10)
         rows = [("del", "-", t) for t in removed] + [("add", "+", t) for t in added]
         for style, sign, line in rows[:DIFF_LINES]:
@@ -451,6 +467,14 @@ class Renderer:
         emit([f"{C['ok']}{DOT}{C['r']} {C['b']}Report to caller{C['r']}"])
         if report:
             emit(wrap_block(markdown(report, max_lines=REPORT_LINES), None, INDENT))
+
+
+def _added_removed(added, removed):
+    """Claude Code's edit summary: "Added 2 lines, removed 1 line"."""
+    def count(n, verb):
+        return f"{verb} {C['b']}{n}{C['r']}{C['grey']} line{'' if n == 1 else 's'}"
+    parts = [count(n, verb) for n, verb in ((added, "added"), (removed, "removed")) if n]
+    return ", ".join(parts)[:1].upper() + ", ".join(parts)[1:] if parts else ""
 
 
 _renderer = Renderer()

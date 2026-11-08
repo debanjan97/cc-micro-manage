@@ -57,7 +57,7 @@ class Placement:
 
     def _view_command(self):
         return view_command(self.agent_id, self.agent_type, self.session_id, self.session_transcript,
-                            settings.linger(), self.claude_pane, self.purpose)
+                            settings.linger(), self.claude_pane, self.purpose, settings.color_depth())
 
     def _open_pane(self):
         if self.ghostty:

@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+- **Panes match Claude's colours in truecolor terminals.** Claude Code draws with its full 24-bit theme when the terminal supports it (Ghostty always does; tmux does with `COLORTERM=truecolor`), but panes always used its 256-colour fallback, so greens, the orange, inline code and the prompt band were visibly off next to Claude. Panes now use whichever palette Claude itself is using.
+- **Parallel tool calls keep their results together.** When an agent runs several tools at once, each result now appears under its own call (repeated if others were printed since), as in Claude Code, instead of under whichever call came last.
+- Edit results read like Claude Code's (`Added 2 lines, removed 1 line`), and the receipt after **Report to caller** is no longer shown.
+
 ## [1.1.0] - 2026-11-08
 
 ### Added

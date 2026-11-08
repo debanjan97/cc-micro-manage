@@ -14,10 +14,24 @@ def _bg(n):
     return f"\033[48;5;{n}m"
 
 
-# Claude Code's own palette (256 colours), read off its panes
-C = {
+def _rgb(r, g, b):
+    return f"\033[38;2;{r};{g};{b}m"
+
+
+def _rgb_bg(r, g, b):
+    return f"\033[48;2;{r};{g};{b}m"
+
+
+_STYLES = {
     "r": "\033[0m", "b": "\033[1m", "dim": "\033[2m", "it": "\033[3m", "ul": "\033[4m", "strike": "\033[9m",
     "fg": "\033[39m", "nobg": "\033[49m",
+    # plain ANSI colours, still used by a few callers
+    "red": "\033[31m", "green": "\033[32m", "yel": "\033[33m", "cyan": "\033[36m", "mag": "\033[35m",
+    "blue": "\033[34m",
+}
+
+# Claude Code's palette in a 256-colour terminal (tmux without truecolor), read off its panes
+COLORS_256 = {
     "text": _fg(231),        # body text and the ⏺ before Claude's words
     "grey": _fg(246),        # ⎿ results, hints, the status line
     "rule": _fg(244),        # the rules around the input box
@@ -28,10 +42,31 @@ C = {
     "claude": _fg(173),      # Claude's orange: ✻ and the welcome box
     "prompt": _bg(237),      # background of your prompts
     "del": _fg(167) + _bg(52), "add": _fg(77) + _bg(22),     # diff lines
-    # plain ANSI colours, still used by a few callers
-    "red": "\033[31m", "green": "\033[32m", "yel": "\033[33m", "cyan": "\033[36m", "mag": "\033[35m",
-    "blue": "\033[34m",
 }
+
+# the same in a truecolor terminal (Ghostty, or tmux with COLORTERM=truecolor),
+# read off Claude Code's panes in Ghostty
+COLORS_24BIT = {
+    "text": _rgb(255, 255, 255),
+    "grey": _rgb(153, 153, 153),
+    "rule": _rgb(136, 136, 136),
+    "code": _rgb(177, 185, 249),
+    "ok": _rgb(78, 186, 101),
+    "err": _rgb(255, 107, 128),
+    "warn": _rgb(255, 193, 7),
+    "claude": _rgb(215, 119, 87),
+    "prompt": _rgb_bg(55, 55, 55),
+    "del": _rgb(248, 248, 242) + _rgb_bg(61, 1, 0), "add": _rgb(248, 248, 242) + _rgb_bg(2, 40, 0),
+}
+
+C = {**_STYLES, **COLORS_256}
+
+
+def use_colors(depth):
+    """Draw with Claude Code's "24bit" or "256" palette, matching how Claude
+    itself draws in the same terminal."""
+    C.update(COLORS_24BIT if depth == "24bit" else COLORS_256)
+
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 _SGR = re.compile(r"\x1b\[[0-9;]*m")

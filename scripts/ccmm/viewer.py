@@ -9,7 +9,7 @@ from . import claude_files, ghostty, layout, messaging, panes, program, state
 from .relay import Relay
 from . import render
 from .render import agent_state, render_record
-from .text import paint
+from .text import paint, use_colors
 from .screen import DEFAULT_STATUS, Screen
 from .stats import Stats
 
@@ -32,13 +32,14 @@ def parse_args(argv):
     return args
 
 
-def view_command(agent_id, agent_type, session_id, session_transcript, linger, claude_pane, purpose):
+def view_command(agent_id, agent_type, session_id, session_transcript, linger, claude_pane, purpose,
+                 colors="256"):
     """The command a new agent pane runs. Panes don't inherit Claude's
     environment, so settings they need travel as arguments."""
     return program.shell_command(
         "view", "--agent-id", agent_id, "--agent-type", agent_type, "--session", session_id or "",
         "--transcript", session_transcript or "", "--linger", linger, "--parent-pane", claude_pane,
-        "--title", purpose)
+        "--title", purpose, "--colors", colors)
 
 
 def _linger_seconds(text):
@@ -273,4 +274,6 @@ class Viewer:
 
 
 def main(argv):
-    Viewer(parse_args(argv)).run()
+    args = parse_args(argv)
+    use_colors(args.get("colors"))
+    Viewer(args).run()
