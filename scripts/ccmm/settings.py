@@ -2,12 +2,13 @@
 
 An environment variable wins over the plugin option, which wins over the
 default. Only hook processes see these; panes are told what they need through
-arguments and state files, because tmux panes don't inherit Claude's
+arguments and state files, because panes don't inherit Claude's
 environment.
 
 Every variable is spelled out literally (never built at run time).
 """
 import os
+import sys
 
 DEFAULT_LINGER = "10"
 DEFAULT_SHORTCUT = "a"
@@ -81,6 +82,16 @@ def debug_enabled():
 
 def inside_tmux():
     return bool(os.environ.get("TMUX"))
+
+
+def terminal():
+    """Where Claude runs: "tmux", "ghostty" (macOS, without tmux) or None.
+    tmux wins, so Claude in tmux inside Ghostty uses tmux panes."""
+    if inside_tmux():
+        return "tmux"
+    if os.environ.get("TERM_PROGRAM") == "ghostty" and sys.platform == "darwin":
+        return "ghostty"
+    return None
 
 
 def claude_pane():

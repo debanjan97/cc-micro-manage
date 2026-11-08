@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cc-micro-manage: give every Claude Code subagent its own live tmux pane.
+"""cc-micro-manage: give every Claude Code subagent its own live tmux or Ghostty pane.
 
 The code lives in the ccmm package next to this file; see ccmm/__init__.py for
 a map. This entry point is what hooks/hooks.json, tmux and the plugin call.

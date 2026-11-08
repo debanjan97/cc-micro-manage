@@ -14,7 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
-from ccmm import messaging, relay, render, settings, state, text  # noqa: E402
+from ccmm import ghostty, ghostty_layout, messaging, panes, relay, render, settings, state, text  # noqa: E402
 from ccmm.placement import describe  # noqa: E402
 from ccmm.stats import Stats, pretty_model  # noqa: E402
 
@@ -347,6 +347,115 @@ class MessagingTest(unittest.TestCase):
         agent = state.Agent("bg3")
         messaging.queue(agent, "x")
         self.assertIsNone(messaging.stop_decision(agent, background=True))
+
+    def test_relay_refused_with_a_reason(self):
+        agent = state.Agent("bg4")
+        agent.shape = "background"
+        agent.forbid_relay(messaging.RELAY_NEEDS_TMUX)
+        self.assertEqual(messaging.queue(agent, "x"), (messaging.RELAY_NEEDS_TMUX, None))
+
+
+class FakeGhostty:
+    """Stands in for osascript: records scripts, answers from a table."""
+
+    def __init__(self):
+        self.scripts, self.answers = [], []
+        self.ids = 0
+
+    def run(self, cmd, capture_output=True, text=True):
+        if cmd[0] == "ps":
+            return mock.Mock(returncode=0, stdout=self.ps.pop(0), stderr="")
+        script = cmd[2]
+        self.scripts.append(script)
+        out = ""
+        if "split terminal id" in script or "new tab in" in script:
+            self.ids += 1
+            out = f"T{self.ids}"
+        for needle, answer in self.answers:
+            if needle in script:
+                out = answer
+        return mock.Mock(returncode=0, stdout=out + "\n", stderr="")
+
+
+class GhosttyTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="ccmm-unit-")
+        self.fake = FakeGhostty()
+        for patcher in (mock.patch.object(state, "STATE_DIR", self.dir),
+                        mock.patch.object(ghostty.subprocess, "run", self.fake.run)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        ghostty._changed()
+
+    def test_terminal_detection(self):
+        env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TERM_PROGRAM")}
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(settings.sys, "platform", "darwin"):
+            self.assertIsNone(settings.terminal())
+            os.environ["TERM_PROGRAM"] = "ghostty"
+            self.assertEqual(settings.terminal(), "ghostty")
+            os.environ["TMUX"] = "/tmp/tmux-1/default,1,0"
+            self.assertEqual(settings.terminal(), "tmux", "tmux inside Ghostty uses tmux")
+        with mock.patch.dict(os.environ, {"TERM_PROGRAM": "ghostty"}, clear=True), \
+                mock.patch.object(settings.sys, "platform", "linux"):
+            self.assertIsNone(settings.terminal(), "Ghostty's scripting is macOS-only")
+
+    def test_quote(self):
+        self.assertEqual(ghostty.quote('say "hi" \\ bye'), '"say \\"hi\\" \\\\ bye"')
+
+    def test_controlling_tty_walks_up_to_claude(self):
+        self.fake.ps = ["?? 500\n", "ttys004 400\n"]
+        self.assertEqual(ghostty.controlling_tty(600), "/dev/ttys004")
+        self.fake.ps = ["?? 1\n"]
+        self.assertEqual(ghostty.controlling_tty(600), "")
+
+    def test_split_sets_command_direction_and_title(self):
+        new = ghostty.split("CLAUDE", "right", "python3 'x y'", 'Scout "1"')
+        self.assertEqual(new, "T1")
+        script = self.fake.scripts[-1]
+        self.assertIn('set command of cfg to "python3 \'x y\'"', script)
+        self.assertIn('split terminal id "CLAUDE" direction right', script)
+        self.assertIn('set name override of t to "Scout \\"1\\""', script)
+
+    def test_liveness_is_one_call_for_many_panes(self):
+        self.fake.answers = [("return (id of terminals)", "A\nB")]
+        self.assertTrue(panes.is_alive("A"))
+        self.assertTrue(panes.is_alive("B"))
+        self.assertFalse(panes.is_alive("C"))
+        self.assertFalse(panes.is_alive(""))
+        self.assertEqual(len(self.fake.scripts), 1)
+
+    def test_pane_ids_tell_the_terminals_apart(self):
+        self.assertTrue(panes.is_tmux("%12"))
+        self.assertTrue(panes.is_tmux("@3"))
+        self.assertFalse(panes.is_tmux("59EBD1C9-9081-4E0D-8169-2A2C9A7D3FA6"))
+
+    def test_column_splits_right_then_stacks_down(self):
+        self.fake.answers = [("return (id of terminals)", "CLAUDE\nT1\nT2")]
+        column = ghostty_layout.Column("CLAUDE")
+        self.assertEqual(column.add("view a", "a"), "T1")
+        self.assertEqual(column.add("view b", "b"), "T2")
+        self.assertIn('split terminal id "CLAUDE" direction right', self.fake.scripts[-3])
+        self.assertIn('split terminal id "T1" direction down', self.fake.scripts[-1])
+        self.assertEqual(column.panes(), ["T1", "T2"])
+
+    def test_even_out_leaves_your_own_splits_alone(self):
+        state.Agent("a1").pane = "T1"
+        self.fake.answers = [("ids as text", "CLAUDE\nT1\nT2")]
+        ghostty_layout.even_out("CLAUDE", new_pane="T2")
+        self.assertIn("equalize_splits", self.fake.scripts[-1])
+        self.fake.answers = [("ids as text", "CLAUDE\nT1\nMINE")]
+        ghostty_layout.even_out("CLAUDE")
+        self.assertNotIn("equalize_splits", self.fake.scripts[-1])
+
+    def test_agents_tab_opens_once_then_splits(self):
+        self.fake.answers = [("return (id of terminals)", "CLAUDE\nT1")]
+        tab = ghostty_layout.AgentsTab("CLAUDE")
+        self.assertEqual(tab.add("view a", "a"), "T1")
+        self.assertIn("new tab in w", self.fake.scripts[-1])
+        self.assertIn('set name override of newTab to "agents"', self.fake.scripts[-1])
+        self.assertIn("select tab tb", self.fake.scripts[-1], "focus stays on Claude's tab")
+        self.assertEqual(tab.add("view b", "b"), "T2")
+        self.assertIn('split terminal id "T1" direction right', self.fake.scripts[-2])
 
 
 if __name__ == "__main__":

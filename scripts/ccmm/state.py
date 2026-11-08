@@ -7,7 +7,7 @@ between the two on macOS.
 Per agent, keyed by a filesystem-safe agent id:
   <key>.pane       the agent's tmux pane
   <key>.shape      "foreground" or "background" (how Claude launched it)
-  <key>.norelay    present when relaying to background agents is turned off
+  <key>.norelay    present when messages can't be relayed to a background agent (holds why)
   <key>.inbox      messages you typed for a foreground agent (JSON lines)
   <key>.delivered  how many inbox messages were handed over at SubagentStop
   <key>.relay      messages you typed for a background agent (JSON lines)
@@ -103,8 +103,14 @@ class Agent:
     def relay_allowed(self):
         return not os.path.exists(self.file(".norelay"))
 
-    def forbid_relay(self):
-        write(self.file(".norelay"), "1")
+    def forbid_relay(self, reason=""):
+        write(self.file(".norelay"), reason or "1")
+
+    @property
+    def relay_off_reason(self):
+        """Why a background pane is read-only, if placement said."""
+        reason = read(self.file(".norelay"))
+        return "" if reason == "1" else reason
 
     # lifecycle
     @property

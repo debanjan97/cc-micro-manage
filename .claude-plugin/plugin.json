@@ -2,7 +2,7 @@
   "name": "cc-micro-manage",
   "displayName": "cc-micro-manage",
   "version": "1.0.0",
-  "description": "Micro-manage your Claude Code subagents: each one gets a live tmux pane (stacked FIFO, nested ones split their parent) with a message box to steer it, even in the background.",
+  "description": "Micro-manage your Claude Code subagents: each one gets a live tmux or Ghostty pane (stacked FIFO, nested ones split their parent) with a message box to steer it, even in the background.",
   "author": {
     "name": "Debanjan Ganguly",
     "url": "https://github.com/debanjan97"
@@ -16,6 +16,7 @@
   "license": "MIT",
   "keywords": [
     "tmux",
+    "ghostty",
     "subagents",
     "agents",
     "observability",

@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 
-from . import claude_files, layout, messaging, program, state, tmux
+from . import claude_files, ghostty, layout, messaging, panes, program, state
 from .relay import Relay
 from . import render
 from .render import agent_state, render_record
@@ -152,7 +152,7 @@ class Viewer:
         """The slower checks for an agent that ends without a SubagentStop we can see."""
         if idle > FINISHED_GRACE and claude_files.read_meta(self.session_transcript, self.agent_id).get("finished"):
             return True     # Claude Code marks background agents finished in their meta file
-        if self.claude_pane and not tmux.is_alive(self.claude_pane):
+        if self.claude_pane and not panes.is_alive(self.claude_pane):
             render.done_line("Claude pane closed; stopping")
             self.linger = min(self.linger, CLAUDE_GONE_LINGER) if self.linger >= 0 else CLAUDE_GONE_LINGER
             return True
@@ -172,7 +172,7 @@ class Viewer:
             self.screen.set_status(RELAY_STATUS)
         else:
             self.screen.input_enabled = False
-            self.screen.set_status(messaging.RELAY_OFF)
+            self.screen.set_status(self.agent.relay_off_reason or messaging.RELAY_OFF)
 
     # ── your messages ──────────────────────────────────────────────────
     def _on_send(self, text):
@@ -256,9 +256,20 @@ class Viewer:
 
     def _request_relayout(self):
         """Once this pane is gone, re-even the column (tmux runs it after we exit)."""
-        if self.claude_pane:
+        if not self.claude_pane:
+            return
+        if panes.is_tmux(self.claude_pane):
             command = program.shell_command("relayout", self.claude_pane)
             subprocess.run(["tmux", "run-shell", "-b", f"sleep 0.4; {command}"], capture_output=True)
+            return
+        # Ghostty leaves a split open when its command exits, so a helper that
+        # outlives us closes it, then evens out the rest
+        try:
+            me = ghostty.terminal_for_tty(os.ttyname(sys.stdin.fileno()))
+        except (OSError, ghostty.GhosttyError):
+            me = ""
+        subprocess.Popen(program.argv("ghostty-closed", me, self.claude_pane), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 
 def main(argv):

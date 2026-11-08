@@ -18,7 +18,7 @@ claude plugin marketplace add ./cc-micro-manage
 claude plugin install cc-micro-manage@cc-micro-manage
 ```
 
-A plugin installed from a local marketplace loads in place, so restart `claude` (inside tmux) to pick up your edits.
+A plugin installed from a local marketplace loads in place, so restart `claude` (inside tmux, or in Ghostty) to pick up your edits.
 
 ### How the code is laid out
 
@@ -39,6 +39,8 @@ A plugin installed from a local marketplace loads in place, so restart `claude` 
 | `relay` | delivery to background agents through Claude's input box |
 | `state` | small per-agent files in the state directory |
 | `claude_files` | where Claude Code keeps transcripts and meta files |
+| `ghostty`, `ghostty_layout` | Ghostty's AppleScript interface, and the same column (or an `agents` tab) as native splits |
+| `panes` | tells tmux pane ids from Ghostty's, so liveness checks work with either |
 | `tmux`, `settings`, `program` | the tmux command line, plugin options and env vars, re-running ourselves |
 
 | Subcommand | Called by | Job |
@@ -49,6 +51,7 @@ A plugin installed from a local marketplace loads in place, so restart `claude` 
 | `view` | the pane | tail and render the transcript, message box, relay to Claude's input box |
 | `send` | `prefix + a` binding | queue a message typed in tmux's prompt (inbox for foreground agents, relay for background ones) |
 | `relayout` | the viewer, on exit | re-even the column |
+| `ghostty-closed` | the viewer, on exit (Ghostty) | close the finished split, which Ghostty leaves open, then re-even the rest |
 
 ## Testing your change
 
@@ -58,7 +61,7 @@ A plugin installed from a local marketplace loads in place, so restart `claude` 
 python3 -m unittest discover -s tests -v
 ```
 
-There are two suites. **Unit tests** ([`tests/test_units.py`](tests/test_units.py)) cover the parts with no tmux or terminal: settings precedence, reading Claude's input box, markdown and transcript rendering, the footer, and message queueing. They run in well under a second.
+There are two suites. **Unit tests** ([`tests/test_units.py`](tests/test_units.py)) cover the parts with no tmux or terminal: settings precedence, reading Claude's input box, markdown and transcript rendering, the footer, message queueing, and the AppleScript the Ghostty support sends (against a stand-in for `osascript`). They run in well under a second.
 
 **End-to-end tests** ([`tests/test_e2e.py`](tests/test_e2e.py)) need tmux and Python 3.11+, and take about 30 seconds. No Claude account or network is needed. Each test starts its own tmux server on a private socket, with a stand-in for Claude's pane ([`tests/fake_claude.py`](tests/fake_claude.py)) that draws an input box like Claude Code's. The tests drive the hook script the way Claude Code does, writing subagent transcripts and meta files in Claude Code's layout, and then check the real panes. They cover:
 

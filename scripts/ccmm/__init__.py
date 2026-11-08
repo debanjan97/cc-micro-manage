@@ -1,4 +1,4 @@
-"""cc-micro-manage: give every Claude Code subagent its own live tmux pane.
+"""cc-micro-manage: give every Claude Code subagent its own live tmux or Ghostty pane.
 
 Modules, from the outside in:
 
@@ -15,6 +15,9 @@ Modules, from the outside in:
   relay        delivery to background agents through Claude's input box
   state        small per-agent files in the state directory
   claude_files where Claude Code keeps transcripts and meta files
+  ghostty_layout  the same column (or an "agents" tab) as Ghostty splits
+  ghostty      Ghostty's AppleScript interface (macOS)
+  panes        tells tmux pane ids from Ghostty's
   tmux         the tmux command line
   settings     plugin options and environment variables
 """

@@ -10,6 +10,7 @@ from . import claude_files, program, settings, state, tmux
 
 ALREADY_FINISHED = "That subagent has already finished; message not sent."
 RELAY_OFF = "read-only · background subagent (relay is turned off)"
+RELAY_NEEDS_TMUX = "read-only · background subagent (relaying needs tmux)"
 QUEUED_FOR_STOP = "queued, delivered when the subagent wraps up"
 QUEUED_FOR_RELAY = "relaying via Claude"
 
@@ -24,7 +25,7 @@ def queue(agent, text):
         return ALREADY_FINISHED, None
     if agent.is_background:
         if not agent.relay_allowed:
-            return RELAY_OFF, None
+            return agent.relay_off_reason or RELAY_OFF, None
         agent.append_message(".relay", text)
         return None, "relay"
     agent.append_message(".inbox", text)

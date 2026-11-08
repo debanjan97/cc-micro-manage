@@ -2,7 +2,7 @@
 
 # cc-micro-manage
 
-**Watch every Claude Code subagent work, live, in its own tmux pane.**
+**Watch every Claude Code subagent work, live, in its own tmux or Ghostty pane.**
 
 *For fellow control freaks: hover over your subagents the way your manager micromanages you.<br>(If you still have one.)*
 
@@ -10,6 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/plugins)
 [![tmux ≥ 3.0](https://img.shields.io/badge/tmux-%E2%89%A5%203.0-1BB91F)](https://github.com/tmux/tmux)
+[![Ghostty ≥ 1.3](https://img.shields.io/badge/Ghostty-%E2%89%A5%201.3-3551F3)](https://ghostty.org)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB)](https://www.python.org/)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#requirements)
 
@@ -17,7 +18,7 @@
 
 </div>
 
-When Claude Code fans work out to subagents, all you normally see is a spinner. **cc-micro-manage** gives each subagent its own live tmux pane, showing its task, text, thinking, tool calls and results as they happen. Panes stack up beside Claude as agents start and close as they finish, and you can type into any of them to steer that agent mid-task.
+When Claude Code fans work out to subagents, all you normally see is a spinner. **cc-micro-manage** gives each subagent its own live pane, in tmux or as a native Ghostty split on macOS, showing its task, text, thinking, tool calls and results as they happen. Panes stack up beside Claude as agents start and close as they finish, and you can type into any of them to steer that agent mid-task.
 
 ## Contents
 
@@ -26,6 +27,7 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Messaging a subagent](#messaging-a-subagent)
+- [Ghostty](#ghostty)
 - [Configuration](#configuration)
 - [How it works](#how-it-works)
 - [Troubleshooting](#troubleshooting)
@@ -42,7 +44,8 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 - 🌳 **Nested agents split their parent.** A subagent's own subagents open beside *its* pane, following the same rule at every level, up to Claude Code's depth limit of 5.
 - 💬 **Message box.** Type into any subagent's pane to steer it mid-task. Background agents get it relayed through Claude within seconds (see [Messaging](#messaging-a-subagent)).
 - 🧹 **Cleans up after itself.** Panes close when agents finish, when Claude's pane goes away, or after 30 idle minutes.
-- 🪶 **Lightweight.** One Python file with no dependencies. The hook returns instantly, and outside tmux it does nothing.
+- 👻 **tmux or Ghostty.** In tmux, panes are tmux panes. Running Claude straight in Ghostty on macOS, they are native Ghostty splits instead, with no tmux needed (see [Ghostty](#ghostty)).
+- 🪶 **Lightweight.** One Python file with no dependencies. The hook returns instantly, and outside tmux and Ghostty it does nothing.
 - 🔒 **Hands-off.** Your agents run exactly as before, and the plugin never rearranges panes you created yourself. The only time it types anything is when you message a background agent: it puts a one-line request into Claude's input box, and only while that box is empty.
 
 ## Requirements
@@ -50,7 +53,7 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 | | |
 |---|---|
 | **Claude Code** | 2.1.83 or newer (settings show up in `/config` from 2.1.269). Tested with 2.1.319. |
-| **tmux** | 3.0 or newer, and Claude must run inside it. |
+| **Terminal** | **tmux** 3.0 or newer (macOS or Linux), or **Ghostty** 1.3 or newer on macOS. Claude must run inside one of them. |
 | **Python** | 3.11 or newer, as `python3` on your `PATH`. On macOS, install it with Homebrew (`brew install python`): the system `/usr/bin/python3` is too old. |
 | **OS** | macOS or Linux. |
 
@@ -63,7 +66,7 @@ Run these inside Claude Code:
 /plugin install cc-micro-manage@cc-micro-manage
 ```
 
-Then restart `claude` **inside a tmux session**.
+Then restart `claude` **inside a tmux session**, or in a Ghostty window on macOS.
 
 <details>
 <summary>Install from a local clone (for development)</summary>
@@ -79,7 +82,7 @@ A plugin installed from a local marketplace loads in place, so your edits take e
 
 ## Quick start
 
-Open a repo in Claude Code inside tmux and paste:
+Open a repo in Claude Code inside tmux or Ghostty and paste:
 
 ```
 Launch 3 general-purpose subagents in parallel: (1) Scout: read every source file one at a
@@ -94,7 +97,7 @@ To regenerate the GIF above, see [`demo/`](demo/): `./demo/setup-demo-repo.sh &&
 
 ## Messaging a subagent
 
-Every pane has a message box on its bottom line. Click the pane (with tmux mouse mode) or move to it with `prefix + arrow`, type, and press **Enter**. You can also press **`prefix + a`** from anywhere in the pane to type into tmux's own prompt.
+Every pane has a message box on its bottom line. Click the pane (with tmux mouse mode, or in Ghostty) or move to it with `prefix + arrow`, type, and press **Enter**. In tmux you can also press **`prefix + a`** from anywhere in the pane to type into tmux's own prompt.
 
 ```
 ❯ also check the refresh-token path
@@ -129,13 +132,26 @@ We tried. Text that appears in the middle of an agent's work claiming "the user 
 
 Your text goes through a tmux pane option, never through a shell, so quotes, `$(…)` and `#{…}` are all safe.
 
+## Ghostty
+
+On macOS, run `claude` straight in a Ghostty window (no tmux) and subagent panes open as native Ghostty splits, driven by Ghostty's AppleScript support. Everything above works the same way: the column beside Claude, nested agents splitting their parent, the message box, the `window` layout (an `agents` tab instead of a tmux window), and panes closing when their agent finishes. Focus stays in Claude's pane.
+
+A few things differ, because Ghostty doesn't offer them:
+
+- **Background subagents' panes are read-only.** The relay has to see Claude's input box to know it's empty, and Ghostty can't show another program a terminal's screen. Foreground subagents take messages as usual.
+- **No border titles or status dots.** Ghostty splits have no borders. Each pane's purpose is its terminal title, which shows in the tab bar while the pane is focused.
+- **No `prefix + a` shortcut**, since there's no tmux prefix. Click a pane and type into its message box.
+- **Claude keeps half the width**, not 55%: the plugin evens out splits with Ghostty's `equalize_splits`, and only while the tab holds nothing but Claude and its agents.
+
+If Claude runs in tmux *inside* Ghostty, the plugin uses tmux. Setting `macos-applescript = false` in your Ghostty config turns Ghostty support off.
+
 ## Configuration
 
 Change settings in Claude Code's **`/config`** panel, where cc-micro-manage's options appear once the plugin is enabled, or under **`/plugin` → cc-micro-manage → Configure**. Restart `claude` to apply them.
 
 | Setting | Default | What it does |
 |---|---|---|
-| **Pane layout** (`layout`) | `split` | `split`: a column beside Claude, as in the GIF. `window`: tile all subagent panes in a separate `agents` tmux window. |
+| **Pane layout** (`layout`) | `split` | `split`: a column beside Claude, as in the GIF. `window`: tile all subagent panes in a separate `agents` tmux window (a tab, in Ghostty). |
 | **Seconds a pane stays after its agent finishes** (`linger`) | `10` | `-1` keeps a finished pane open until you press Enter. |
 | **Message shortcut** (`message_shortcut`) | `a` | Key after your tmux prefix that opens the message prompt. `none` disables it. A binding that isn't ours is never overwritten, so pick a free key (tmux already uses `m`, for example). |
 | **Relay messages to background subagents** (`relay`) | on | Off makes background panes read-only. See [Messaging](#messaging-a-subagent). |
@@ -200,7 +216,8 @@ Each pane runs the plugin's viewer (`cc_micro_manage.py view`). It tails the sub
 <details>
 <summary><b>No panes appear</b></summary>
 
-- Is `claude` running **inside tmux**? Check that `echo $TMUX` prints something.
+- Is `claude` running **inside tmux**, or in **Ghostty** on macOS? `echo $TMUX` should print something in tmux, and `echo $TERM_PROGRAM` should print `ghostty` in Ghostty.
+- In Ghostty: check `osascript -e 'tell application "Ghostty" to get version'` prints 1.3 or newer. If macOS asks whether Ghostty may control Ghostty, allow it.
 - Did you restart `claude` after installing? Hooks are loaded at startup.
 - Run `/plugin` and check that `cc-micro-manage` is enabled.
 - Start `claude` with `CC_MICRO_MANAGE_DEBUG=1`, start a subagent, then check `/tmp/cc-micro-manage-$(id -u)/debug.jsonl`. If it's empty, the hooks aren't firing.
@@ -229,7 +246,7 @@ Your tmux server may have kept an old `ANTHROPIC_API_KEY`. Check with `tmux show
 - **It relies on undocumented internals.** The hook events are documented. The transcript files (`subagents/agent-<id>.jsonl`) and the parent links (`agent-<id>.meta.json`) are not, and a Claude Code release could change them. Parsing is defensive: the worst case is a pane that can't find its transcript.
 - **Relayed messages go through Claude's conversation.** Each one adds a short turn (your relay request and Claude's one-line confirmation) to the main session. The relay reads Claude's input box from the screen, so a big Claude Code UI change could stop it detecting an empty box; it then just waits, and never types over anything.
 - **It's a view, not a terminal.** You can't type commands into a subagent. Panes show what the agent does.
-- **It needs tmux.** There's no iTerm2, WezTerm or Zellij support yet. PRs are welcome.
+- **It needs tmux, or Ghostty on macOS.** Ghostty on Linux has no scripting interface yet, and there's no iTerm2, WezTerm or Zellij support. PRs are welcome.
 
 ## Contributing
 

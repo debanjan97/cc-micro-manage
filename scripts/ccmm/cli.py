@@ -7,13 +7,17 @@
   view         runs inside an agent pane
   send PANE    the message shortcut's prompt was submitted in PANE
   relayout     re-evens the column after a pane closes
+  ghostty-closed TERMINAL CLAUDE
+               closes a finished Ghostty pane, then re-evens the rest
 """
 import sys
 
-from . import hooks, layout, messaging, state, viewer
+import time
+
+from . import ghostty, ghostty_layout, hooks, layout, messaging, state, viewer
 from .placement import Placement
 
-HOOK_COMMANDS = {"start", "stop", "relayout", "place", "send", "post-agent"}
+HOOK_COMMANDS = {"start", "stop", "relayout", "place", "send", "post-agent", "ghostty-closed"}
 
 
 def main(argv=None):
@@ -42,7 +46,17 @@ def _dispatch(command, rest):
     elif command == "send":
         messaging.send_from_prompt(rest[0])
     elif command == "relayout":
-        with state.Lock("tmux"):
+        with state.Lock("panes"):
             layout.relayout(rest[0])
+    elif command == "ghostty-closed":
+        _ghostty_closed(*rest[:2])
     else:
         print(__doc__)
+
+
+def _ghostty_closed(terminal, claude_pane):
+    time.sleep(0.3)             # let the pane's program exit first
+    if terminal:
+        ghostty.close(terminal)
+    with state.Lock("panes"):
+        ghostty_layout.relayout(claude_pane)

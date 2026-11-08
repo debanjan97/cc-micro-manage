@@ -4,7 +4,7 @@ Every pane that agents hang off (Claude's pane, or a parent agent's pane for
 nested agents) owns a column: its first agent splits it to the right, later
 ones stack below, oldest on top (FIFO). The column is kept in col-<owner pane>.
 """
-from . import settings, state, tmux
+from . import panes as pane_ids, settings, state, tmux
 
 CLAUDE_SHARE = "55%"                 # Claude's width once the column exists
 FIRST_SPLIT = {"claude": "45%", "agent": "50%"}
@@ -30,7 +30,7 @@ class Column:
 
     def panes(self):
         """Live panes in the column, oldest first."""
-        return [p for p in state.read(self.file).split() if tmux.is_alive(p)]
+        return [p for p in state.read(self.file).split() if pane_ids.is_alive(p)]
 
     def save(self, panes):
         state.write(self.file, "\n".join(panes))

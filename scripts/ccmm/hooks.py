@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 
-from . import claude_files, messaging, program, settings, state
+from . import claude_files, ghostty, messaging, program, settings, state
 
 
 def _debug_log(event, payload):
@@ -19,12 +19,16 @@ def _debug_log(event, payload):
 def subagent_start(payload):
     """Open a pane, in a detached helper, so the hook returns at once."""
     _debug_log("start", payload)
-    if settings.plugin_disabled() or not settings.inside_tmux():
+    terminal = settings.terminal()
+    if settings.plugin_disabled() or not terminal:
         return
     if not payload.get("agent_id") or not payload.get("agent_type"):
         return      # Claude Code's internal agents (prompt suggestions, /btw)
     if payload["agent_type"] in settings.skipped_agent_types():
         return
+    if terminal == "ghostty":
+        # the helper has no tty; Claude's tty is how it finds Claude's terminal
+        payload = {**payload, "ccmm_tty": ghostty.controlling_tty()}
     helper = subprocess.Popen(program.argv("place"), stdin=subprocess.PIPE,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                               start_new_session=True)
