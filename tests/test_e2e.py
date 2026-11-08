@@ -289,12 +289,14 @@ class E2E(unittest.TestCase):
         self.tmux("unbind-key", "-T", "prefix", "g")       # some tmux versions bind g by default
         self.start("a1", "Bound", CLAUDE_PLUGIN_OPTION_MESSAGE_SHORTCUT="g")
         self.pane_of("a1")
-        self.assertIn("cc_micro_manage", self.tmux("list-keys", "-T", "prefix", "g"))
+        self.wait_for(lambda: "cc_micro_manage" in self.tmux("list-keys", "-T", "prefix", "g"),
+                      what="shortcut bound")      # bound just after the pane is tagged
 
     def test_shortcut_never_replaces_your_binding(self):
         self.tmux("bind-key", "-T", "prefix", "g", "display-message", "mine")
         self.start("a1", "Bound", CLAUDE_PLUGIN_OPTION_MESSAGE_SHORTCUT="g")
         self.pane_of("a1")
+        time.sleep(1)                              # give the plugin time to (wrongly) rebind
         binding = self.tmux("list-keys", "-T", "prefix", "g")
         self.assertIn("mine", binding)
         self.assertNotIn("cc_micro_manage", binding)
