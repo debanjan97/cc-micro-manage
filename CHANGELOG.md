@@ -5,13 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-### Added
-- **End-to-end tests** (`tests/`): the real plugin in a private tmux server, with a stand-in for Claude's pane, covering layout, rendering, cleanup, both messaging paths and settings. CI runs them on Linux and macOS, Python 3.9 and 3.13.
-- `CC_MICRO_MANAGE_STATE_DIR` sets where the plugin keeps its state files (the tests use it to stay out of your real sessions).
-
 ### Changed
+- **Refactored into a package.** The 1,300-line script is now `scripts/ccmm/`, one module per job, with small named functions (the longest is ~30 lines, down from ~190). `scripts/cc_micro_manage.py` stays as the entry point, so hooks and existing installs are unaffected. No behaviour changes.
 - `CC_MICRO_MANAGE_KEY` is now `CC_MICRO_MANAGE_SHORTCUT`, and the `message_key` setting is now `message_shortcut`: the plugin directory's scanner reads names ending in `KEY` as credentials.
 - The demo GIF moved to the `assets` branch, so no file in the plugin exceeds the plugin directory's 5 MiB limit.
+
+### Fixed
+- Relayed messages are marked off in the request typed into Claude, so Claude forwards only your words. Before, it could forward the whole request, and the agent then read it as an instruction to itself.
+
+### Added
+- **Unit tests** (`tests/test_units.py`) for settings, reading Claude's input box, rendering, the footer and message queueing.
+- **End-to-end tests** (`tests/`): the real plugin in a private tmux server, with a stand-in for Claude's pane, covering layout, rendering, cleanup, both messaging paths and settings. CI runs them on Linux and macOS, Python 3.9 and 3.13.
+- `CC_MICRO_MANAGE_STATE_DIR` sets where the plugin keeps its state files (the tests use it to stay out of your real sessions).
 
 ## [0.6.0] - 2026-11-07
 

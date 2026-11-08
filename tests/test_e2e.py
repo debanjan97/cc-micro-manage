@@ -118,6 +118,18 @@ class E2E(unittest.TestCase):
             time.sleep(0.1)
         self.fail(f"timed out waiting for {what} (last: {last!r})")
 
+    def wait_for_screen(self, pane, *needles, timeout=10):
+        """Wait until every needle is on the pane's screen; on timeout, name the missing ones."""
+        end = time.time() + timeout
+        while True:
+            screen = self.capture(pane)
+            missing = [n for n in needles if n not in screen]
+            if not missing:
+                return screen
+            if time.time() > end:
+                self.fail(f"not on screen: {missing}\n--- screen ---\n{screen}")
+            time.sleep(0.1)
+
     def agent_path(self, aid):
         return os.path.join(self.subagents, f"agent-{aid}.jsonl")
 
@@ -188,14 +200,10 @@ class E2E(unittest.TestCase):
 
         self.write("a1", assistant(text("Found **three** files"), tool_use("Bash", {"command": "ls"})),
                    tool_result("a.go\nb.go"))
-        screen = self.wait_for(lambda: (lambda s: s if "a.go" in s else None)(self.capture(pane)),
-                               what="rendered transcript")
-        self.assertIn("▶ task", screen)
-        self.assertIn("List every file", screen)
-        self.assertIn("Found three files", screen)           # markdown rendered, ** stripped
-        self.assertIn("⏺ Bash(ls)", screen)
-        self.assertIn("Haiku 5.5", screen)                    # footer
-        self.assertIn("12.0k", screen)                        # context tokens
+        self.wait_for_screen(pane, "▶ task", "List every file",
+                             "Found three files",              # markdown rendered, ** stripped
+                             "⏺ Bash(ls)", "a.go",
+                             "Haiku 5.5", "12.0k")             # footer: model, context tokens
 
     def test_finish_closes_pane_and_cleans_state(self):
         self.start("a1", "Short job")

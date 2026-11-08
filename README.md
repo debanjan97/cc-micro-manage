@@ -159,7 +159,7 @@ Each setting also has an environment variable, which wins over the plugin settin
 ```mermaid
 sequenceDiagram
     participant C as Claude Code
-    participant H as Hooks (cc_micro_manage.py)
+    participant H as Hooks (cc-micro-manage)
     participant T as tmux
     participant V as Pane viewer
     C->>H: SubagentStart (agent_id, type)
@@ -188,7 +188,7 @@ sequenceDiagram
 | `SubagentStop` | Delivers any messages still waiting, or marks the agent done so its pane can close. |
 | `PostToolUse` (`Agent`/`Task`) | Tells the calling agent what you sent its subagent. |
 
-Each pane runs `cc_micro_manage.py view`. It tails the subagent's transcript, strips Claude Code's internal bookkeeping such as `<system-reminder>` blocks, and keeps the message box pinned to the bottom using a terminal scroll region.
+Each pane runs the plugin's viewer (`cc_micro_manage.py view`). It tails the subagent's transcript, strips Claude Code's internal bookkeeping such as `<system-reminder>` blocks, and keeps the message box pinned to the bottom using a terminal scroll region.
 
 ## Troubleshooting
 

@@ -20,7 +20,25 @@ claude plugin install cc-micro-manage@cc-micro-manage
 
 A plugin installed from a local marketplace loads in place, so restart `claude` (inside tmux) to pick up your edits.
 
-Everything lives in `scripts/cc_micro_manage.py`:
+### How the code is laid out
+
+`scripts/cc_micro_manage.py` is the entry point that `hooks/hooks.json` and tmux call. The code is in the [`scripts/ccmm/`](scripts/ccmm/) package, one module per job:
+
+| Module | Job |
+|---|---|
+| `cli` | dispatches the subcommands below |
+| `hooks` | the SubagentStart, SubagentStop and PostToolUse entry points |
+| `placement` | opens an agent's pane and records it |
+| `layout` | the column beside Claude, relayout, border titles, status dots |
+| `viewer` | the program in each agent pane: follows the transcript, shows messages, closes at the end |
+| `screen` | that pane's terminal UI: scrolling output plus a message box and footer |
+| `render` | transcript records to coloured text, markdown included |
+| `stats` | the footer: model, effort, tokens, elapsed time |
+| `messaging` | queueing your messages, and delivery at SubagentStop |
+| `relay` | delivery to background agents through Claude's input box |
+| `state` | small per-agent files in the state directory |
+| `claude_files` | where Claude Code keeps transcripts and meta files |
+| `tmux`, `settings`, `program` | the tmux command line, plugin options and env vars, re-running ourselves |
 
 | Subcommand | Called by | Job |
 |---|---|---|
@@ -33,13 +51,15 @@ Everything lives in `scripts/cc_micro_manage.py`:
 
 ## Testing your change
 
-### Automated: end-to-end tests
+### Automated
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-They need tmux and Python 3.9+, and take about 30 seconds. No Claude account or network is needed. Each test starts its own tmux server on a private socket, with a stand-in for Claude's pane ([`tests/fake_claude.py`](tests/fake_claude.py)) that draws an input box like Claude Code's. The tests drive the hook script the way Claude Code does, writing subagent transcripts and meta files in Claude Code's layout, and then check the real panes. They cover:
+There are two suites. **Unit tests** ([`tests/test_units.py`](tests/test_units.py)) cover the parts with no tmux or terminal: settings precedence, reading Claude's input box, markdown and transcript rendering, the footer, and message queueing. They run in well under a second.
+
+**End-to-end tests** ([`tests/test_e2e.py`](tests/test_e2e.py)) need tmux and Python 3.9+, and take about 30 seconds. No Claude account or network is needed. Each test starts its own tmux server on a private socket, with a stand-in for Claude's pane ([`tests/fake_claude.py`](tests/fake_claude.py)) that draws an input box like Claude Code's. The tests drive the hook script the way Claude Code does, writing subagent transcripts and meta files in Claude Code's layout, and then check the real panes. They cover:
 
 - panes opening beside Claude, titles, rendering, the footer, and status colours
 - the FIFO column, nested agents splitting their parent, the `window` layout, and border titles
@@ -66,6 +86,7 @@ The tests stand in for Claude Code, so check against the real thing before a rel
 ## Guidelines
 
 - **Keep it dependency-free.** Use the standard library only, and target Python 3.9 (macOS's system Python).
+- **Keep units small.** One module per job, short functions named for what they do. If a function needs a comment to explain its steps, the steps probably want names.
 - **Hooks must never break a session.** Exit 0, return fast, and catch everything.
 - **Be defensive about Claude Code internals.** Transcript and meta formats are undocumented, so fail soft.
 - **Respect the user's tmux.** Never rearrange panes you didn't create or overwrite bindings that aren't yours.
