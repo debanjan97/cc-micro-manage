@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-08
+
 ### Changed
 - **Python 3.11 or newer** is now required (was 3.9). On macOS, use Homebrew's Python rather than the system one.
 - **Refactored into a package.** The 1,300-line script is now `scripts/ccmm/`, one module per job, with small named functions (the longest is ~30 lines, down from ~190). `scripts/cc_micro_manage.py` stays as the entry point, so hooks and existing installs are unaffected. No behaviour changes.
