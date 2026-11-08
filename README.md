@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/plugins)
 [![tmux ≥ 3.0](https://img.shields.io/badge/tmux-%E2%89%A5%203.0-1BB91F)](https://github.com/tmux/tmux)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB)](https://www.python.org/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB)](https://www.python.org/)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](#requirements)
 
 ![cc-micro-manage demo: three subagents open live panes beside Claude, a nested agent splits its parent's pane, and every pane closes when its agent finishes](https://raw.githubusercontent.com/debanjan97/cc-micro-manage/assets/demo.gif)
@@ -49,7 +49,7 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 |---|---|
 | **Claude Code** | 2.1.83 or newer (settings show up in `/config` from 2.1.269). Tested with 2.1.319. |
 | **tmux** | 3.0 or newer, and Claude must run inside it. |
-| **Python** | 3.9 or newer, as `python3` on your `PATH`. |
+| **Python** | 3.11 or newer, as `python3` on your `PATH`. On macOS, install it with Homebrew (`brew install python`): the system `/usr/bin/python3` is too old. |
 | **OS** | macOS or Linux. |
 
 ## Installation

@@ -6,6 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [Unreleased]
 
 ### Changed
+- **Python 3.11 or newer** is now required (was 3.9). On macOS, use Homebrew's Python rather than the system one.
 - **Refactored into a package.** The 1,300-line script is now `scripts/ccmm/`, one module per job, with small named functions (the longest is ~30 lines, down from ~190). `scripts/cc_micro_manage.py` stays as the entry point, so hooks and existing installs are unaffected. No behaviour changes.
 - `CC_MICRO_MANAGE_KEY` is now `CC_MICRO_MANAGE_SHORTCUT`, and the `message_key` setting is now `message_shortcut`: the plugin directory's scanner reads names ending in `KEY` as credentials.
 - The demo GIF moved to the `assets` branch, so no file in the plugin exceeds the plugin directory's 5 MiB limit.

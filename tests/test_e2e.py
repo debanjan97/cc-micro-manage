@@ -6,7 +6,7 @@ submitted to it. The tests then drive the hook script exactly as Claude Code
 does (same subcommands, same JSON payloads on stdin, TMUX/TMUX_PANE set) and
 write subagent transcripts and meta files the way Claude Code lays them out.
 
-Needs tmux >= 3.0 and Python 3.9+. No Claude account or network.
+Needs tmux >= 3.0 and Python 3.11+. No Claude account or network.
 
     python3 -m unittest discover -s tests -v
 """

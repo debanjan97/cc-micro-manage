@@ -59,7 +59,7 @@ python3 -m unittest discover -s tests -v
 
 There are two suites. **Unit tests** ([`tests/test_units.py`](tests/test_units.py)) cover the parts with no tmux or terminal: settings precedence, reading Claude's input box, markdown and transcript rendering, the footer, and message queueing. They run in well under a second.
 
-**End-to-end tests** ([`tests/test_e2e.py`](tests/test_e2e.py)) need tmux and Python 3.9+, and take about 30 seconds. No Claude account or network is needed. Each test starts its own tmux server on a private socket, with a stand-in for Claude's pane ([`tests/fake_claude.py`](tests/fake_claude.py)) that draws an input box like Claude Code's. The tests drive the hook script the way Claude Code does, writing subagent transcripts and meta files in Claude Code's layout, and then check the real panes. They cover:
+**End-to-end tests** ([`tests/test_e2e.py`](tests/test_e2e.py)) need tmux and Python 3.11+, and take about 30 seconds. No Claude account or network is needed. Each test starts its own tmux server on a private socket, with a stand-in for Claude's pane ([`tests/fake_claude.py`](tests/fake_claude.py)) that draws an input box like Claude Code's. The tests drive the hook script the way Claude Code does, writing subagent transcripts and meta files in Claude Code's layout, and then check the real panes. They cover:
 
 - panes opening beside Claude, titles, rendering, the footer, and status colours
 - the FIFO column, nested agents splitting their parent, the `window` layout, and border titles
@@ -68,7 +68,7 @@ There are two suites. **Unit tests** ([`tests/test_units.py`](tests/test_units.p
 - background messages relayed through Claude's input box, including waiting for (and never submitting over) a draft
 - settings from plugin options, with environment variables taking precedence
 
-CI runs them on Linux and macOS with Python 3.9 and 3.13 on every push. Please add a test with any behaviour change.
+CI runs them on every push: Linux with Python 3.11 and 3.13, and macOS with 3.13. Please add a test with any behaviour change.
 
 ### By hand, with real Claude Code
 
@@ -85,7 +85,7 @@ The tests stand in for Claude Code, so check against the real thing before a rel
 
 ## Guidelines
 
-- **Keep it dependency-free.** Use the standard library only, and target Python 3.9 (macOS's system Python).
+- **Keep it dependency-free.** Use the standard library only, and target Python 3.11.
 - **Keep units small.** One module per job, short functions named for what they do. If a function needs a comment to explain its steps, the steps probably want names.
 - **Hooks must never break a session.** Exit 0, return fast, and catch everything.
 - **Be defensive about Claude Code internals.** Transcript and meta formats are undocumented, so fail soft.
