@@ -127,8 +127,17 @@ class E2E(unittest.TestCase):
             if not missing:
                 return screen
             if time.time() > end:
-                self.fail(f"not on screen: {missing}\n--- screen ---\n{screen}")
+                self.fail(f"not on screen: {missing}\n--- screen ---\n{screen}\n--- panes ---\n"
+                          f"{self.tmux('list-panes', '-a', '-F', '#{pane_id} #{pane_dead} #{pane_current_command}')}"
+                          f"\n--- errors.log ---\n{self.errors_log()}")
             time.sleep(0.1)
+
+    def errors_log(self):
+        try:
+            with open(os.path.join(self.state, "errors.log")) as f:
+                return f.read()
+        except OSError:
+            return "(none)"
 
     def agent_path(self, aid):
         return os.path.join(self.subagents, f"agent-{aid}.jsonl")

@@ -15,8 +15,8 @@
                closes a finished Ghostty pane, then re-evens the rest
 """
 import sys
-
 import time
+import traceback
 
 from . import ghostty, ghostty_layout, hooks, layout, messaging, shell_viewer, state, viewer
 from .placement import Placement, ShellPlacement
@@ -31,10 +31,21 @@ def main(argv=None):
     try:
         _dispatch(command, rest)
     except Exception as error:
+        _log_error(command)
         if command not in HOOK_COMMANDS:
             raise
         print(f"cc_micro_manage: {error}", file=sys.stderr)   # a hook must never break the session
         sys.exit(0)
+
+
+def _log_error(command):
+    """Keep the traceback: a pane that crashes closes, taking its output with it."""
+    try:
+        state.ensure_dir()
+        with open(state.path("errors.log"), "a") as f:
+            f.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')} {command}\n{traceback.format_exc()}\n")
+    except OSError:
+        pass
 
 
 def _dispatch(command, rest):
