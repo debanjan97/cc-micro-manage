@@ -189,7 +189,89 @@ class E2E(unittest.TestCase):
         self.tmux("send-keys", "-t", pane, "-l", s)
         self.tmux("send-keys", "-t", pane, "Enter")
 
+    def shell_output(self, task_id):
+        """Where Claude Code writes a background shell's output (under CLAUDE_CODE_TMPDIR)."""
+        tasks = os.path.join(self.tmp, "cctmp", f"claude-{os.getuid()}", "-repo", SESSION, "tasks")
+        os.makedirs(tasks, exist_ok=True)
+        return os.path.join(tasks, f"{task_id}.output")
+
+    def bash(self, command, task_id=None, description="", payload_extra=None, **extra):
+        """PostToolUse on Bash; a task id makes it a background shell."""
+        response = {"stdout": "", "stderr": "", "interrupted": False}
+        tool_input = {"command": command, "description": description}
+        if task_id:
+            response["backgroundTaskId"] = task_id
+            tool_input["run_in_background"] = True
+            open(self.shell_output(task_id), "a").close()
+        payload = {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": tool_input,
+                   "tool_response": response, "session_id": SESSION, "transcript_path": self.transcript,
+                   "cwd": self.tmp, **(payload_extra or {})}
+        self.hook("post-bash", payload,
+                  CLAUDE_CODE_TMPDIR=os.path.join(self.tmp, "cctmp"), **extra)
+
+    def shell_pane(self, task_id):
+        """The pane showing a background shell (found by its border title)."""
+        return self.wait_for(lambda: next((p["pane"] for p in self.panes().values()
+                                           if p["title"].endswith(task_id[:6])), None),
+                             what=f"pane for shell {task_id}")
+
+    def shell_says(self, task_id, *lines):
+        with open(self.shell_output(task_id), "a") as f:
+            f.write("".join(line + "\n" for line in lines))
+
     # ── panes appear, render, and go away ───────────────────────────
+    # ── background shells ────────────────────────────────────────────
+    def test_background_shell_streams_then_closes_on_exit(self):
+        self.bash("npm run dev", "b1abc9", description="Start the dev server")
+        pane = self.shell_pane("b1abc9")
+        p = self.panes()
+        self.assertGreater(p[pane]["left"], p["claude"]["left"], "shell pane should be right of Claude")
+        self.assertEqual(p[pane]["title"], "$ Start the dev server · b1abc9")
+        self.assertNotIn("npm run dev", self.tmux("display-message", "-p", "-t", pane, "#{pane_start_command}"),
+                         "`pkill -f 'npm run dev'` would kill the pane too")
+        self.shell_says("b1abc9", "compiling…", "\x1b[32mready\x1b[0m on :3000", "\x1b[2Jcleared")
+        self.wait_for_screen(pane, "Start the dev server", "Bash(npm run dev)", "⎿  compiling…",
+                             "     ready on :3000", "     cleared", "background shell · running")
+        self.shell_says("b1abc9", "", "[exited with code 0]")
+        screen = self.wait_for_screen(pane, "exited with code 0 · ran for")
+        self.assertNotIn("[exited", screen)
+        self.wait_for(lambda: pane not in [x["pane"] for x in self.panes().values()], timeout=8,
+                      what="shell pane to close")
+        self.assertFalse(os.listdir(self.state) and
+                         [f for f in os.listdir(self.state) if f.startswith("shell-")])
+
+    def test_failed_shell_says_so(self):
+        self.bash("make test", "b2fail")
+        pane = self.shell_pane("b2fail")
+        self.shell_says("b2fail", "FAIL: 1 test", "", "[exited with code 2]")
+        self.wait_for_screen(pane, "Bash(make test)", "FAIL: 1 test",
+                             "Exit code 2", "exited with code 2")
+
+    def test_killed_shell_and_session_end(self):
+        self.bash("sleep 300", "b3kill")
+        pane = self.shell_pane("b3kill")
+        self.shell_says("b3kill", "", "[killed]")
+        self.wait_for_screen(pane, "stopped · ran for")
+        self.bash("tail -f log", "b4tail")
+        pane = self.shell_pane("b4tail")
+        self.hook("session-end", {"hook_event_name": "SessionEnd", "session_id": SESSION})
+        self.wait_for_screen(pane, "Claude session ended")
+
+    def test_foreground_bash_and_shells_off_open_nothing(self):
+        self.bash("ls")
+        self.bash("npm run dev", "b5off", CC_MICRO_MANAGE_SHELLS="0")
+        time.sleep(1.5)
+        self.assertEqual(list(self.panes()), ["claude"])
+
+    def test_shell_started_by_an_agent_opens_beside_it(self):
+        self.start("a1", "Builder")
+        agent = self.pane_of("a1")
+        self.bash("go build ./...", "b6nest", description="Build", payload_extra={"agent_id": "a1"})
+        pane = self.shell_pane("b6nest")
+        p = {x["pane"]: x for x in self.panes().values()}
+        self.assertGreaterEqual(p[pane]["left"], p[agent]["left"], "the shell opens in the agent's area")
+        self.assertEqual(p[pane]["title"], "↳ $ Build · b6nest")
+
     def test_pane_opens_beside_claude_with_title_and_render(self):
         self.start("a1", "Scout: describe files", task="List every file")
         pane = self.pane_of("a1")

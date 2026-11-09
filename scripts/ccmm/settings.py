@@ -23,6 +23,7 @@ _SOURCES = {
     "RELAY": lambda: (os.environ.get("CC_MICRO_MANAGE_RELAY"), os.environ.get("CLAUDE_PLUGIN_OPTION_RELAY")),
     "BORDERS": lambda: (os.environ.get("CC_MICRO_MANAGE_BORDERS"), os.environ.get("CLAUDE_PLUGIN_OPTION_BORDERS")),
     "SKIP": lambda: (os.environ.get("CC_MICRO_MANAGE_SKIP"), os.environ.get("CLAUDE_PLUGIN_OPTION_SKIP")),
+    "SHELLS": lambda: (os.environ.get("CC_MICRO_MANAGE_SHELLS"), os.environ.get("CLAUDE_PLUGIN_OPTION_SHELLS")),
 }
 
 
@@ -66,6 +67,11 @@ def relay_enabled():
 
 def borders_enabled():
     return _enabled("BORDERS")
+
+
+def shells_enabled():
+    """Give background shells (Bash with run_in_background) a pane too."""
+    return _enabled("SHELLS")
 
 
 def skipped_agent_types():

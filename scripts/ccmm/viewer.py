@@ -49,7 +49,53 @@ def _linger_seconds(text):
         return DEFAULT_LINGER
 
 
-class Viewer:
+class PaneProgram:
+    """The end of any pane's life, shared by agent and shell panes: linger,
+    then once the pane is gone, re-even the panes left."""
+    screen = None
+    linger = DEFAULT_LINGER
+    claude_pane = ""
+
+    def _linger(self):
+        self.screen.finished = True
+        if self.linger < 0:
+            self._wait_for_enter()
+            return
+        end = time.time() + self.linger
+        while time.time() < end:
+            self.screen.set_status(f"finished · closing in {int(end - time.time()) + 1}s")
+            self.screen.poll(min(1.0, max(end - time.time(), 0.05)))
+
+    def _wait_for_enter(self):
+        if self.screen.active:
+            self.screen.set_status("finished · press Enter to close")
+            while not self.screen.enter_pressed:
+                self.screen.poll(0.5)
+            return
+        try:
+            input(paint("press Enter to close", "grey"))
+        except EOFError:
+            pass
+
+    def _request_relayout(self):
+        """Once this pane is gone, re-even the column (tmux runs it after we exit)."""
+        if not self.claude_pane:
+            return
+        if panes.is_tmux(self.claude_pane):
+            command = program.shell_command("relayout", self.claude_pane)
+            subprocess.run(["tmux", "run-shell", "-b", f"sleep 0.4; {command}"], capture_output=True)
+            return
+        # Ghostty leaves a split open when its command exits, so a helper that
+        # outlives us closes it, then evens out the rest
+        try:
+            me = ghostty.terminal_for_tty(os.ttyname(sys.stdin.fileno()))
+        except (OSError, ghostty.GhosttyError):
+            me = ""
+        subprocess.Popen(program.argv("ghostty-closed", me, self.claude_pane), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+class Viewer(PaneProgram):
     def __init__(self, args):
         self.agent_id = args.get("agent_id", "")
         self.agent_type = args.get("agent_type", "")
@@ -233,45 +279,6 @@ class Viewer:
             render.note(f"{undelivered} message(s) arrived too late to deliver", "err")
         sys.stdout.flush()
         self.agent.remove_all()
-
-    def _linger(self):
-        self.screen.finished = True
-        if self.linger < 0:
-            self._wait_for_enter()
-            return
-        end = time.time() + self.linger
-        while time.time() < end:
-            self.screen.set_status(f"finished · closing in {int(end - time.time()) + 1}s")
-            self.screen.poll(min(1.0, max(end - time.time(), 0.05)))
-
-    def _wait_for_enter(self):
-        if self.screen.active:
-            self.screen.set_status("finished · press Enter to close")
-            while not self.screen.enter_pressed:
-                self.screen.poll(0.5)
-            return
-        try:
-            input(paint("press Enter to close", "grey"))
-        except EOFError:
-            pass
-
-    def _request_relayout(self):
-        """Once this pane is gone, re-even the column (tmux runs it after we exit)."""
-        if not self.claude_pane:
-            return
-        if panes.is_tmux(self.claude_pane):
-            command = program.shell_command("relayout", self.claude_pane)
-            subprocess.run(["tmux", "run-shell", "-b", f"sleep 0.4; {command}"], capture_output=True)
-            return
-        # Ghostty leaves a split open when its command exits, so a helper that
-        # outlives us closes it, then evens out the rest
-        try:
-            me = ghostty.terminal_for_tty(os.ttyname(sys.stdin.fileno()))
-        except (OSError, ghostty.GhosttyError):
-            me = ""
-        subprocess.Popen(program.argv("ghostty-closed", me, self.claude_pane), stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-
 
 def main(argv):
     args = parse_args(argv)

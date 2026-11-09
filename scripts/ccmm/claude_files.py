@@ -5,6 +5,10 @@
   <project>/<session>/subagents/agent-<id>.meta.json     description, parentAgentId,
                                                          spawnDepth, requestShape,
                                                          toolUseId, finished
+and, for background shells (Bash with run_in_background):
+  <tmp>/claude-<uid>/<project>/<session>/tasks/<task>.output
+      the command's output as it runs; Claude Code appends "[exited with code N]"
+      or "[killed]" on a line of its own when it ends
 These are undocumented, so every reader here fails soft.
 """
 import glob
@@ -56,6 +60,28 @@ def transcript_candidates(agent_id, session_transcript=None, session_id=None):
         for n in names:
             out += glob.glob(os.path.join(root, "*", session_id, "subagents", n))
     return out
+
+
+def shell_output_candidates(session_id, task_id):
+    """Paths where a background shell's output file may be. Claude Code puts it
+    under $CLAUDE_CODE_TMPDIR, else /tmp (on macOS, /private/tmp)."""
+    if not session_id or not task_id:
+        return []
+    bases = [os.environ.get("CLAUDE_CODE_TMPDIR"), "/tmp", "/private/tmp"]
+    out = []
+    for base in dict.fromkeys(b for b in bases if b):
+        pattern = os.path.join(base, f"claude-{os.getuid()}", "*", session_id, "tasks", f"{task_id}.output")
+        out += glob.glob(pattern)
+    return out
+
+
+def find_shell_output(session_id, task_id, wait=0.0):
+    deadline = time.time() + wait
+    while True:
+        found = shell_output_candidates(session_id, task_id)
+        if found or time.time() >= deadline:
+            return found[0] if found else ""
+        time.sleep(0.1)
 
 
 def agent_for_tool_use(session_transcript, tool_use_id):

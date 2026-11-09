@@ -26,12 +26,34 @@ def subagent_start(payload):
         return      # Claude Code's internal agents (prompt suggestions, /btw)
     if payload["agent_type"] in settings.skipped_agent_types():
         return
+    _place(program.argv("place"), payload, terminal)
+
+
+def post_bash(payload):
+    """PostToolUse on Bash: give a background shell its own pane."""
+    _debug_log("post-bash", payload)
+    terminal = settings.terminal()
+    if settings.plugin_disabled() or not terminal or not settings.shells_enabled():
+        return
+    response = payload.get("tool_response")
+    if not isinstance(response, dict) or not response.get("backgroundTaskId"):
+        return          # an ordinary command: Claude shows it inline
+    _place(program.argv("place-shell"), payload, terminal)
+
+
+def session_end(payload):
+    """SessionEnd: close the panes of the session's background shells."""
+    state.ensure_dir()
+    state.mark_session_ended(payload.get("session_id"))
+
+
+def _place(command, payload, terminal):
+    """Hand the payload to a detached helper that opens the pane."""
     if terminal == "ghostty":
         # the helper has no tty; Claude's tty is how it finds Claude's terminal
         payload = {**payload, "ccmm_tty": ghostty.controlling_tty()}
-    helper = subprocess.Popen(program.argv("place"), stdin=subprocess.PIPE,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                              start_new_session=True)
+    helper = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, start_new_session=True)
     helper.stdin.write(json.dumps(payload).encode())
     helper.stdin.close()
 

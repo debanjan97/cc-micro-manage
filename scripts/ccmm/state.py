@@ -8,6 +8,8 @@ Per agent, keyed by a filesystem-safe agent id:
   <key>.pane       the agent's tmux pane
   <key>.shape      "foreground" or "background" (how Claude launched it)
   <key>.norelay    present when messages can't be relayed to a background agent (holds why)
+  shell-<task>.shell  a background shell's command and title, as JSON (kept out of the pane's
+                   command line, where `pkill -f <command>` would match the pane too)
   <key>.inbox      messages you typed for a foreground agent (JSON lines)
   <key>.delivered  how many inbox messages were handed over at SubagentStop
   <key>.relay      messages you typed for a background agent (JSON lines)
@@ -22,7 +24,7 @@ import time
 
 STATE_DIR = os.environ.get("CC_MICRO_MANAGE_STATE_DIR") or os.path.join("/tmp", "cc-micro-manage-%d" % os.getuid())
 
-AGENT_FILES = (".done", ".pane", ".inbox", ".delivered", ".shape", ".relay", ".norelay")
+AGENT_FILES = (".done", ".pane", ".inbox", ".delivered", ".shape", ".relay", ".norelay", ".shell")
 STALE_AFTER = 24 * 60 * 60
 
 
@@ -69,8 +71,24 @@ def prune_stale():
             pass
 
 
+def mark_session_ended(session_id):
+    """SessionEnd: Claude Code stops the session's background shells, sometimes
+    without writing an exit line, so their panes watch for this."""
+    if session_id:
+        write(path("session-" + safe_key(session_id) + ".ended"), "1")
+
+
+def session_ended(session_id):
+    return bool(session_id) and os.path.exists(path("session-" + safe_key(session_id) + ".ended"))
+
+
+def shell_key(task_id):
+    """The state key of a background shell (agents use their own id)."""
+    return "shell-" + task_id
+
+
 class Agent:
-    """The state files of one agent."""
+    """The state files of one agent, or of a background shell (see shell_key)."""
 
     def __init__(self, agent_id):
         self.key = safe_key(agent_id)
@@ -127,6 +145,18 @@ class Agent:
 
     def clear_done(self):
         remove(self.file(".done"))
+
+    @property
+    def shell(self):
+        """A background shell's {"command": …, "title": …}, or {} until placement writes it."""
+        try:
+            return json.loads(read(self.file(".shell")) or "{}")
+        except ValueError:
+            return {}
+
+    @shell.setter
+    def shell(self, info):
+        write(self.file(".shell"), json.dumps(info))
 
     def remove_all(self):
         for suffix in AGENT_FILES:

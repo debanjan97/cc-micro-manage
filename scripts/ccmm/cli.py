@@ -3,8 +3,12 @@
   start        SubagentStart hook: opens the agent's pane (via `place`)
   stop         SubagentStop hook: delivers your messages or marks the agent done
   post-agent   PostToolUse hook on Agent/Task: tells the caller what you sent
-  place        detached helper: opens the pane
+  post-bash    PostToolUse hook on Bash: opens a background shell's pane (via `place-shell`)
+  session-end  SessionEnd hook: closes the session's shell panes
+  place        detached helper: opens an agent's pane
+  place-shell  detached helper: opens a background shell's pane
   view         runs inside an agent pane
+  shell-view   runs inside a background shell's pane
   send PANE    the message shortcut's prompt was submitted in PANE
   relayout     re-evens the column after a pane closes
   ghostty-closed TERMINAL CLAUDE
@@ -14,10 +18,11 @@ import sys
 
 import time
 
-from . import ghostty, ghostty_layout, hooks, layout, messaging, state, viewer
-from .placement import Placement
+from . import ghostty, ghostty_layout, hooks, layout, messaging, shell_viewer, state, viewer
+from .placement import Placement, ShellPlacement
 
-HOOK_COMMANDS = {"start", "stop", "relayout", "place", "send", "post-agent", "ghostty-closed"}
+HOOK_COMMANDS = {"start", "stop", "relayout", "place", "send", "post-agent", "ghostty-closed",
+                 "post-bash", "session-end", "place-shell"}
 
 
 def main(argv=None):
@@ -39,10 +44,18 @@ def _dispatch(command, rest):
         hooks.subagent_stop(hooks.read_payload())
     elif command == "post-agent":
         hooks.post_agent(hooks.read_payload())
+    elif command == "post-bash":
+        hooks.post_bash(hooks.read_payload())
+    elif command == "session-end":
+        hooks.session_end(hooks.read_payload())
     elif command == "place":
         Placement(hooks.read_payload()).run()
+    elif command == "place-shell":
+        ShellPlacement(hooks.read_payload()).run()
     elif command == "view":
         viewer.main(rest)
+    elif command == "shell-view":
+        shell_viewer.main(rest)
     elif command == "send":
         messaging.send_from_prompt(rest[0])
     elif command == "relayout":

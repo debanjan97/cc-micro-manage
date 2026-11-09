@@ -5,7 +5,8 @@ cc-micro-manage runs entirely on your computer. It has no server, sends nothing 
 ## What it reads
 
 - **Subagent transcripts** that Claude Code writes under `~/.claude/projects/`, to show each subagent's work in its pane. These can contain anything in your session, including code and personal data. The plugin only displays them in your terminal.
-- **Hook payloads** from Claude Code (agent IDs, agent type, transcript paths) and **tmux state** (pane IDs, pane options) or, in Ghostty, **its terminals' IDs, ttys and titles** through AppleScript.
+- **Background shells' output**, which Claude Code writes under `/tmp/claude-<uid>/`, to show it in the shell's pane. It's whatever the command prints, which can include secrets a command logs. The plugin only displays it.
+- **Hook payloads** from Claude Code (agent IDs, agent type, transcript paths, and for background shells the command and its task ID) and **tmux state** (pane IDs, pane options) or, in Ghostty, **its terminals' IDs, ttys and titles** through AppleScript.
 - **Your settings**, from the plugin's options or `CC_MICRO_MANAGE_*` environment variables.
 - **Claude's input box**, read from its tmux pane, only to check that it's empty before relaying a message you typed for a background subagent.
 

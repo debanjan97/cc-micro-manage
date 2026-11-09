@@ -28,9 +28,10 @@ A plugin installed from a local marketplace loads in place, so restart `claude` 
 |---|---|
 | `cli` | dispatches the subcommands below |
 | `hooks` | the SubagentStart, SubagentStop and PostToolUse entry points |
-| `placement` | opens an agent's pane and records it |
+| `placement` | opens an agent's or a background shell's pane and records it |
 | `layout` | the column beside Claude, relayout, border titles, status dots |
 | `viewer` | the program in each agent pane: follows the transcript, shows messages, closes at the end |
+| `shell_viewer` | the program in each background shell's pane: tails the command's output file, closes when it ends |
 | `screen` | that pane's terminal UI: scrolling output plus Claude Code's input box and footer |
 | `render` | transcript records to text drawn like Claude Code's: prompts, `⏺` blocks, `⎿` results, markdown and tables |
 | `text` | Claude Code's colours, visible width, and wrapping with a hanging indent |
@@ -38,7 +39,7 @@ A plugin installed from a local marketplace loads in place, so restart `claude` 
 | `messaging` | queueing your messages, and delivery at SubagentStop |
 | `relay` | delivery to background agents through Claude's input box |
 | `state` | small per-agent files in the state directory |
-| `claude_files` | where Claude Code keeps transcripts and meta files |
+| `claude_files` | where Claude Code keeps transcripts, meta files and background shell output |
 | `ghostty`, `ghostty_layout` | Ghostty's AppleScript interface, and the same column (or an `agents` tab) as native splits |
 | `panes` | tells tmux pane ids from Ghostty's, so liveness checks work with either |
 | `tmux`, `settings`, `program` | the tmux command line, plugin options and env vars, re-running ourselves |
@@ -48,6 +49,9 @@ A plugin installed from a local marketplace loads in place, so restart `claude` 
 | `start` / `place` | `SubagentStart` hook | open the pane (detached so the hook returns instantly) |
 | `stop` | `SubagentStop` hook | deliver queued messages or mark the agent done |
 | `post-agent` | `PostToolUse` on `Agent`/`Task` | tell the calling agent what the user sent |
+| `post-bash` / `place-shell` | `PostToolUse` on `Bash` | for a background command, open its pane (detached) |
+| `session-end` | `SessionEnd` hook | mark the session ended, so its shell panes close |
+| `shell-view` | inside a shell pane | stream the command's output |
 | `view` | the pane | tail and render the transcript, message box, relay to Claude's input box |
 | `send` | `prefix + a` binding | queue a message typed in tmux's prompt (inbox for foreground agents, relay for background ones) |
 | `relayout` | the viewer, on exit | re-even the column |

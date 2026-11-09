@@ -2,7 +2,7 @@
 
 # cc-micro-manage
 
-**Watch every Claude Code subagent work, live, in its own tmux or Ghostty pane.**
+**Watch every Claude Code subagent and background shell work, live, in its own tmux or Ghostty pane.**
 
 *For fellow control freaks: hover over your subagents the way your manager micromanages you.<br>(If you still have one.)*
 
@@ -18,7 +18,7 @@
 
 </div>
 
-When Claude Code fans work out to subagents, all you normally see is a spinner. **cc-micro-manage** gives each subagent its own live pane, in tmux or as a native Ghostty split on macOS, showing its task, text, thinking, tool calls and results as they happen. Panes stack up beside Claude as agents start and close as they finish, and you can type into any of them to steer that agent mid-task.
+When Claude Code fans work out to subagents, all you normally see is a spinner. **cc-micro-manage** gives each subagent its own live pane, in tmux or as a native Ghostty split on macOS, showing its task, text, thinking, tool calls and results as they happen. Panes stack up beside Claude as agents start and close as they finish, and you can type into any of them to steer that agent mid-task. Background shells, like the dev server or test watcher Claude starts and leaves running, get a pane too, streaming their output.
 
 ## Contents
 
@@ -42,6 +42,7 @@ When Claude Code fans work out to subagents, all you normally see is a spinner. 
 - 📊 **Footer like Claude Code's.** Each pane shows the model, effort level, context size, output tokens and elapsed time for its agent.
 - 📚 **FIFO stack.** Panes stack on the right, oldest on top, while Claude keeps the left 55%. When an agent finishes, its pane closes and the rest move up evenly.
 - 🌳 **Nested agents split their parent.** A subagent's own subagents open beside *its* pane, following the same rule at every level, up to Claude Code's depth limit of 5.
+- 🐚 **Background shells too.** When Claude (or a subagent) runs a command in the background, such as `npm run dev` or `pytest --watch`, it gets a pane streaming its output as it runs, drawn as a `⏺ Bash(…)` call. The dot turns green or red when the command exits, and the pane closes after it exits, is stopped, or the session ends. A shell a subagent starts opens beside that agent's pane. Ordinary commands stay inline in Claude.
 - 💬 **Message box.** Type into any subagent's pane to steer it mid-task. Background agents get it relayed through Claude within seconds (see [Messaging](#messaging-a-subagent)).
 - 🧹 **Cleans up after itself.** Panes close when agents finish, when Claude's pane goes away, or after 30 idle minutes.
 - 👻 **tmux or Ghostty.** In tmux, panes are tmux panes. Running Claude straight in Ghostty on macOS, they are native Ghostty splits instead, with no tmux needed (see [Ghostty](#ghostty)).
@@ -156,6 +157,7 @@ Change settings in Claude Code's **`/config`** panel, where cc-micro-manage's op
 | **Message shortcut** (`message_shortcut`) | `a` | Key after your tmux prefix that opens the message prompt. `none` disables it. A binding that isn't ours is never overwritten, so pick a free key (tmux already uses `m`, for example). |
 | **Relay messages to background subagents** (`relay`) | on | Off makes background panes read-only. See [Messaging](#messaging-a-subagent). |
 | **Pane border titles** (`borders`) | on | Turns on pane-border titles in windows with agent panes, only if you haven't enabled borders yourself, and switches them off when the last agent finishes. |
+| **Panes for background shells** (`shells`) | on | Off: background shells (Bash commands Claude runs in the background) don't get a pane. |
 | **Agent types to ignore** (`skip`) | none | Comma-separated, e.g. `Explore,statusline-setup`. |
 
 From your shell, set them at install time with `claude plugin install cc-micro-manage@cc-micro-manage --config linger=5`, or later with:
@@ -167,7 +169,7 @@ echo '{"linger": "5", "skip": "statusline-setup"}' | claude plugin configure cc-
 <details>
 <summary>Environment variables (older setups, per-shell overrides, debugging)</summary>
 
-Each setting also has an environment variable, which wins over the plugin setting: `CC_MICRO_MANAGE_LAYOUT`, `CC_MICRO_MANAGE_LINGER`, `CC_MICRO_MANAGE_SHORTCUT`, `CC_MICRO_MANAGE_RELAY` (`0` = off), `CC_MICRO_MANAGE_BORDERS` (`0` = off) and `CC_MICRO_MANAGE_SKIP`. Set them in the `env` block of `~/.claude/settings.json` or export them before starting `claude`. Two exist only as variables:
+Each setting also has an environment variable, which wins over the plugin setting: `CC_MICRO_MANAGE_LAYOUT`, `CC_MICRO_MANAGE_LINGER`, `CC_MICRO_MANAGE_SHORTCUT`, `CC_MICRO_MANAGE_RELAY` (`0` = off), `CC_MICRO_MANAGE_BORDERS` (`0` = off), `CC_MICRO_MANAGE_SHELLS` (`0` = off) and `CC_MICRO_MANAGE_SKIP`. Set them in the `env` block of `~/.claude/settings.json` or export them before starting `claude`. Two exist only as variables:
 
 | Variable | What it does |
 |---|---|
@@ -208,8 +210,12 @@ sequenceDiagram
 | `SubagentStart` | Hands the event to a detached helper, which reads `<session>/subagents/agent-<id>.meta.json` to find the parent agent and opens the pane in the right place. |
 | `SubagentStop` | Delivers any messages still waiting, or marks the agent done so its pane can close. |
 | `PostToolUse` (`Agent`/`Task`) | Tells the calling agent what you sent its subagent. |
+| `PostToolUse` (`Bash`) | For a command run in the background, hands it to a detached helper that opens a pane for it. Ordinary commands are ignored. |
+| `SessionEnd` | Closes the panes of the session's background shells, which Claude Code stops with it. |
 
 Each pane runs the plugin's viewer (`cc_micro_manage.py view`). It tails the subagent's transcript, strips Claude Code's internal bookkeeping such as `<system-reminder>` blocks, and keeps the message box pinned to the bottom using a terminal scroll region.
+
+A background shell's pane runs `cc_micro_manage.py shell-view` instead. Claude Code writes the command's output to `/tmp/claude-<uid>/<project>/<session>/tasks/<id>.output` as it runs, and adds `[exited with code N]` or `[killed]` when it ends. The pane tails that file, keeps the output's colours but drops cursor movement and screen clears, and closes on that last line.
 
 ## Troubleshooting
 
@@ -245,7 +251,8 @@ Your tmux server may have kept an old `ANTHROPIC_API_KEY`. Check with `tmux show
 
 - **It relies on undocumented internals.** The hook events are documented. The transcript files (`subagents/agent-<id>.jsonl`) and the parent links (`agent-<id>.meta.json`) are not, and a Claude Code release could change them. Parsing is defensive: the worst case is a pane that can't find its transcript.
 - **Relayed messages go through Claude's conversation.** Each one adds a short turn (your relay request and Claude's one-line confirmation) to the main session. The relay reads Claude's input box from the screen, so a big Claude Code UI change could stop it detecting an empty box; it then just waits, and never types over anything.
-- **It's a view, not a terminal.** You can't type commands into a subagent. Panes show what the agent does.
+- **It's a view, not a terminal.** You can't type commands into a subagent, or input into a background shell. Panes show what the agent or command does.
+- **Shell output arrives a line at a time.** A prompt or progress text with no newline after it shows once a newline follows. Background shell output is also undocumented (`tasks/<id>.output`); if Claude Code moves it, the pane says it couldn't find the output.
 - **It needs tmux, or Ghostty on macOS.** Ghostty on Linux has no scripting interface yet, and there's no iTerm2, WezTerm or Zellij support. PRs are welcome.
 
 ## Contributing

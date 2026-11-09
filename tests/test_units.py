@@ -14,7 +14,8 @@ from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
-from ccmm import ghostty, ghostty_layout, messaging, panes, relay, render, settings, state, text  # noqa: E402
+from ccmm import claude_files, ghostty, ghostty_layout, messaging, panes, relay, render, settings, shell_viewer, state, text  # noqa: E402
+from ccmm.placement import describe_shell  # noqa: E402
 from ccmm.placement import describe  # noqa: E402
 from ccmm.stats import Stats, pretty_model  # noqa: E402
 
@@ -40,12 +41,15 @@ class SettingsTest(unittest.TestCase):
             self.assertEqual(settings.shortcut(), "a")
             self.assertTrue(settings.relay_enabled())
             self.assertTrue(settings.borders_enabled())
+            self.assertTrue(settings.shells_enabled())
             self.assertEqual(settings.skipped_agent_types(), set())
 
     def test_plugin_option_used_when_no_env_var(self):
         with self.env(CLAUDE_PLUGIN_OPTION_LAYOUT="window", CLAUDE_PLUGIN_OPTION_RELAY="false",
-                      CLAUDE_PLUGIN_OPTION_MESSAGE_SHORTCUT="g", CLAUDE_PLUGIN_OPTION_SKIP=" Explore , x "):
+                      CLAUDE_PLUGIN_OPTION_MESSAGE_SHORTCUT="g", CLAUDE_PLUGIN_OPTION_SKIP=" Explore , x ",
+                      CLAUDE_PLUGIN_OPTION_SHELLS="false"):
             self.assertEqual(settings.layout(), "window")
+            self.assertFalse(settings.shells_enabled())
             self.assertFalse(settings.relay_enabled())
             self.assertEqual(settings.shortcut(), "g")
             self.assertEqual(settings.skipped_agent_types(), {"Explore", "x"})
@@ -270,6 +274,34 @@ class RenderTest(unittest.TestCase):
             {"type": "tool_use", "name": "SubagentHandback", "input": {"message": "# Done\nall good"}}]}})
         self.assertIn("⏺ Report to caller", out)
         self.assertIn("  all good", out)
+
+
+class ShellTest(unittest.TestCase):
+    def test_output_keeps_colours_and_drops_other_escapes(self):
+        self.assertEqual(shell_viewer.clean("\x1b[32mok\x1b[0m\tdone"), "\x1b[32mok\x1b[0m      done")
+        self.assertEqual(shell_viewer.clean("\x1b[2J\x1b[H\x1b]0;title\x07hi\x1b[K"), "hi")
+        self.assertEqual(shell_viewer.clean("10%\r50%\r100% done"), "100% done", "progress bars")
+        self.assertEqual(shell_viewer.clean("bell\x07 and \x08backspace"), "bell and backspace")
+
+    def test_claude_codes_closing_lines(self):
+        self.assertEqual(shell_viewer.ending("[exited with code 0]"), ("exited", 0))
+        self.assertEqual(shell_viewer.ending("[exited with code 137]\n"), ("exited", 137))
+        self.assertEqual(shell_viewer.ending("[killed]"), ("killed", None))
+        self.assertIsNone(shell_viewer.ending("echo [killed]"))
+
+    def test_shell_titles(self):
+        self.assertEqual(describe_shell("Start the dev server", "npm run dev", "b1abc9xyz", nested=False),
+                         ("Start the dev server", "$ Start the dev server · b1abc9"))
+        self.assertEqual(describe_shell("", "tail -f\n  log", "b2", nested=True), ("tail -f log", "↳ $ tail -f log · b2"))
+
+    def test_output_file_found_under_claude_tmpdir(self):
+        tmp = tempfile.mkdtemp(prefix="ccmm-unit-")
+        tasks = os.path.join(tmp, f"claude-{os.getuid()}", "-repo", "sess", "tasks")
+        os.makedirs(tasks)
+        open(os.path.join(tasks, "b1.output"), "w").close()
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_TMPDIR": tmp}):
+            self.assertEqual(claude_files.find_shell_output("sess", "b1"), os.path.join(tasks, "b1.output"))
+            self.assertEqual(claude_files.find_shell_output("sess", "nope"), "")
 
 
 class WrapTest(unittest.TestCase):

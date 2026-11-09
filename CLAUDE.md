@@ -17,6 +17,7 @@ CI runs the full suite on Linux (Python 3.11 and 3.13) and macOS (3.13). Run it 
 
 - `hooks/hooks.json` → `scripts/cc_micro_manage.py` → `scripts/ccmm/cli.py`, which dispatches subcommands.
 - `SubagentStart` hands the payload to a **detached** `place` helper and returns at once. The helper opens the pane, and the pane runs `view`, which tails the subagent's transcript.
+- Background shells work the same way: `PostToolUse` on `Bash` with a `backgroundTaskId` hands off to `place-shell`, and the pane runs `shell-view`, which tails Claude Code's `tasks/<id>.output` file until its `[exited with code N]` / `[killed]` line, or `SessionEnd`. Both kinds of pane share `placement._Placement` (where a pane goes) and `viewer.PaneProgram` (lingering and closing).
 - The hook, the helper and the panes share nothing except small files in the state directory (`state.py`, fixed at `/tmp/cc-micro-manage-<uid>`). **Panes don't inherit Claude's environment**, so anything a pane needs travels as an argument (`viewer.view_command`) or a state file.
 - There are two terminal backends. `settings.terminal()` returns `"tmux"` when `$TMUX` is set, `"ghostty"` for `TERM_PROGRAM=ghostty` on macOS, and otherwise `None`, which makes the plugin do nothing. tmux wins over Ghostty.
   - tmux: `tmux.py`, `layout.py` and `placement.py`.
@@ -68,7 +69,7 @@ CI runs the full suite on Linux (Python 3.11 and 3.13) and macOS (3.13). Run it 
 
 ## Making common changes
 
-- **New setting:** touch all five places:
+- **New setting:** touch all five places (the `shells` setting is a recent example):
   - `settings._SOURCES`, plus an accessor
   - `userConfig` in `.claude-plugin/plugin.json`
   - the README's settings table and its environment-variable list
