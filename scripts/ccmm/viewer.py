@@ -56,26 +56,33 @@ class PaneProgram:
     linger = DEFAULT_LINGER
     claude_pane = ""
 
-    def _linger(self):
+    def _linger(self, woken=None):
+        """Keep the finished pane open for a while. Returns True if `woken()`
+        says to carry on instead (an agent that was resumed)."""
         self.screen.finished = True
         if self.linger < 0:
-            self._wait_for_enter()
-            return
+            return self._wait_for_enter(woken)
         end = time.time() + self.linger
         while time.time() < end:
+            if woken and woken():
+                return True
             self.screen.set_status(f"finished · closing in {int(end - time.time()) + 1}s")
             self.screen.poll(min(1.0, max(end - time.time(), 0.05)))
+        return False
 
-    def _wait_for_enter(self):
+    def _wait_for_enter(self, woken=None):
         if self.screen.active:
             self.screen.set_status("finished · press Enter to close")
             while not self.screen.enter_pressed:
+                if woken and woken():
+                    return True
                 self.screen.poll(0.5)
-            return
+            return False
         try:
             input(paint("press Enter to close", "grey"))
         except EOFError:
             pass
+        return False
 
     def _request_relayout(self):
         """Once this pane is gone, re-even the column (tmux runs it after we exit)."""
@@ -113,19 +120,59 @@ class Viewer(PaneProgram):
         self.seen_inbox = self.seen_delivered = self.seen_relay = 0
         self.relay_note = ""
         self.shape_known = False
+        self.resumed_at = self.finished_at = 0.0
 
     # ── the whole life of a pane ───────────────────────────────────────
     def run(self):
+        """Follow the agent until it finishes. Claude Code can resume a finished
+        agent (say, when a background shell it waited on ends); while this pane
+        is still open it keeps its state, so no second pane opens, and it picks
+        the agent back up."""
+        transcript_file = None
         try:
             self._print_header()
             transcript = self._find_transcript()
-            if transcript:
-                self._follow(transcript)
-            self._finish(followed=bool(transcript))
-            self._linger()
+            transcript_file = open(transcript) if transcript else None
+            while True:
+                if transcript_file:
+                    self._follow(transcript_file)
+                self._finish(followed=bool(transcript_file))
+                if not (transcript_file and self._linger(woken=lambda: self._resumed(transcript_file))):
+                    break
+                self._resume()
         finally:
+            if transcript_file:
+                transcript_file.close()
             self.screen.close()
+            self.agent.remove_all()
         self._request_relayout()
+
+    @staticmethod
+    def _resumed(transcript_file):
+        """New lines after the agent finished: it was resumed."""
+        try:
+            return os.path.getsize(transcript_file.name) > transcript_file.tell()
+        except OSError:
+            return False
+
+    def _resume(self):
+        # forget the old SubagentStop (the next one marks it done again), but
+        # not one the resumed run may already have written
+        try:
+            if os.path.getmtime(self.agent.file(".done")) <= self.finished_at:
+                self.agent.clear_done()
+        except OSError:
+            pass
+        self.resumed_at = time.time()
+        self.stats.ended = None
+        self.screen.finished = False
+        self.screen.set_status(DEFAULT_STATUS if not self.agent.is_background else RELAY_STATUS)
+        if self.my_pane:
+            self.shown_state = "running"
+            layout.show_state(self.my_pane, "running")
+        render.blank()
+        render.emit([paint(f"{render.DOT} Resumed", "grey")])
+        sys.stdout.flush()
 
     def _print_header(self):
         title = self.purpose or self.agent_type
@@ -149,38 +196,37 @@ class Viewer(PaneProgram):
             self.screen.poll(0.25)
 
     # ── following the transcript ───────────────────────────────────────
-    def _follow(self, transcript):
-        first, partial = True, ""
+    def _follow(self, f):
+        first, partial = not self.resumed_at, ""
         last_data = last_check = time.time()
         last_footer = 0.0
         done_since = None
-        with open(transcript) as f:
-            while True:
-                chunk = f.readline()
-                if chunk:
-                    partial += chunk
-                    if partial.endswith("\n"):
-                        self._on_record(partial, first)
-                        first, partial = False, ""
-                    done_since, last_data = None, time.time()
-                    continue
-                now = time.time()
-                if now - last_footer >= 1:            # keep the elapsed time ticking
-                    last_footer = now
-                    self._refresh_footer()
-                self._show_messages()
-                self._relay_step(now)
-                sys.stdout.flush()
-                if self.agent.is_done:
-                    done_since = done_since or now
-                    if now - done_since > QUIET_AFTER_DONE:
-                        return
-                self._learn_shape()
-                if now - last_check > CHECK_EVERY:
-                    last_check = now
-                    if self._should_stop(now - last_data):
-                        return
-                self.screen.poll(0.15)
+        while True:
+            chunk = f.readline()
+            if chunk:
+                partial += chunk
+                if partial.endswith("\n"):
+                    self._on_record(partial, first)
+                    first, partial = False, ""
+                done_since, last_data = None, time.time()
+                continue
+            now = time.time()
+            if now - last_footer >= 1:            # keep the elapsed time ticking
+                last_footer = now
+                self._refresh_footer()
+            self._show_messages()
+            self._relay_step(now)
+            sys.stdout.flush()
+            if self.agent.is_done:
+                done_since = done_since or now
+                if now - done_since > QUIET_AFTER_DONE:
+                    return
+            self._learn_shape()
+            if now - last_check > CHECK_EVERY:
+                last_check = now
+                if self._should_stop(now - last_data):
+                    return
+            self.screen.poll(0.15)
 
     def _on_record(self, line, first):
         new_state = agent_state(line)
@@ -197,7 +243,7 @@ class Viewer(PaneProgram):
 
     def _should_stop(self, idle):
         """The slower checks for an agent that ends without a SubagentStop we can see."""
-        if idle > FINISHED_GRACE and claude_files.read_meta(self.session_transcript, self.agent_id).get("finished"):
+        if idle > FINISHED_GRACE and self._meta_says_finished():
             return True     # Claude Code marks background agents finished in their meta file
         if self.claude_pane and not panes.is_alive(self.claude_pane):
             render.done_line("Claude pane closed; stopping")
@@ -207,6 +253,16 @@ class Viewer(PaneProgram):
             render.done_line("No activity for 30 min; stopping")
             return True
         return False
+
+    def _meta_says_finished(self):
+        """The meta file's "finished" flag, unless it predates a resume."""
+        if self.resumed_at:
+            try:
+                if os.path.getmtime(claude_files.meta_path(self.session_transcript, self.agent_id)) < self.resumed_at:
+                    return False
+            except OSError:
+                return False
+        return bool(claude_files.read_meta(self.session_transcript, self.agent_id).get("finished"))
 
     def _learn_shape(self):
         """Once placement records how the agent was launched, set up the message box."""
@@ -268,7 +324,7 @@ class Viewer(PaneProgram):
 
     # ── the end ────────────────────────────────────────────────────────
     def _finish(self, followed):
-        self.stats.ended = time.time()
+        self.finished_at = self.stats.ended = time.time()
         if self.my_pane:
             layout.show_state(self.my_pane, "finished")
         self.screen.set_footer(self.stats.footers())
@@ -278,7 +334,6 @@ class Viewer(PaneProgram):
         if undelivered > 0:
             render.note(f"{undelivered} message(s) arrived too late to deliver", "err")
         sys.stdout.flush()
-        self.agent.remove_all()
 
 def main(argv):
     args = parse_args(argv)

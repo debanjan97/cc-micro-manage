@@ -298,6 +298,26 @@ class E2E(unittest.TestCase):
         self.wait_for(lambda: not [f for f in os.listdir(self.state) if f.startswith("a1.")],
                       what="state files removed")
 
+    def test_resumed_agent_reuses_its_lingering_pane(self):
+        # Claude Code resumes a finished agent, e.g. when a background shell it waited on ends
+        self.start("r1", "Waiter", CC_MICRO_MANAGE_LINGER="4")
+        pane = self.pane_of("r1")
+        self.write("r1", assistant(text("waiting for my shell")))
+        self.stop("r1")
+        self.wait_for(lambda: "Waiter finished" in self.capture(pane), what="first finish")
+        self.write("r1", user("<task-notification><status>completed</status><summary>Background command "
+                              "\"build\" completed (exit code 0)</summary></task-notification>"),
+                   assistant(text("shell done, reporting")))
+        self.hook("start", {"hook_event_name": "SubagentStart", "agent_id": "r1", "agent_type": "general-purpose",
+                            "session_id": SESSION, "transcript_path": self.transcript, "cwd": self.tmp},
+                  CC_MICRO_MANAGE_LINGER="4")
+        self.wait_for_screen(pane, "⏺ Resumed", "shell done, reporting")
+        time.sleep(1)
+        self.assertEqual(len(self.tmux("list-panes", "-a").splitlines()), 2, "no second pane for the same agent")
+        self.stop("r1")
+        self.wait_for(lambda: self.capture(pane).count("Waiter finished") == 2, what="second finish")
+        self.wait_for(lambda: "r1" not in self.panes(), timeout=12, what="pane to close")
+
     def test_meta_finished_backstop_closes_background_agent(self):
         # background agents ignore SubagentStop; the viewer watches meta.finished
         self.start("bg", "Background job", shape="background")

@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - **Panes for background shells.** When Claude, or a subagent, runs a Bash command in the background (a dev server, a test watcher, a long build), it gets its own pane streaming the command's output as it runs, drawn as a Claude Code `⏺ Bash(…)` call. The dot turns green or red when the command exits, and the pane closes once it exits, is stopped, or the session ends. A shell started by a subagent opens beside that agent's pane. Ordinary commands stay inline in Claude. Turn it off with the new **Panes for background shells** setting (`shells`, or `CC_MICRO_MANAGE_SHELLS=0`).
 
+### Fixed
+- **A resumed agent keeps its pane.** Claude Code can resume a finished subagent, for example when a background shell it was waiting on ends. If its pane was still open after finishing, a second pane used to open for it. Now the open pane picks the agent back up (`⏺ Resumed`) and carries on.
+
 ## [1.1.1] - 2026-11-08
 
 ### Fixed
