@@ -11,7 +11,7 @@
       "name": "cc-micro-manage",
       "source": "./",
       "description": "Micro-manage your Claude Code subagents: each one, and every background shell, gets a live tmux or Ghostty pane (stacked FIFO, nested ones split their parent) with a message box to steer it, even in the background.",
-      "version": "1.1.1"
+      "version": "1.2.0"
     }
   ]
 }
