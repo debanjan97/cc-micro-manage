@@ -241,18 +241,18 @@ class E2E(unittest.TestCase):
                          [f for f in os.listdir(self.state) if f.startswith("shell-")])
 
     def test_failed_shell_says_so(self):
-        self.bash("make test", "b2fail")
+        self.bash("make test", "b2fail", CC_MICRO_MANAGE_LINGER="20")
         pane = self.shell_pane("b2fail")
         self.shell_says("b2fail", "FAIL: 1 test", "", "[exited with code 2]")
         self.wait_for_screen(pane, "Bash(make test)", "FAIL: 1 test",
                              "Exit code 2", "exited with code 2")
 
     def test_killed_shell_and_session_end(self):
-        self.bash("sleep 300", "b3kill")
+        self.bash("sleep 300", "b3kill", CC_MICRO_MANAGE_LINGER="20")
         pane = self.shell_pane("b3kill")
         self.shell_says("b3kill", "", "[killed]")
         self.wait_for_screen(pane, "stopped · ran for")
-        self.bash("tail -f log", "b4tail")
+        self.bash("tail -f log", "b4tail", CC_MICRO_MANAGE_LINGER="20")
         pane = self.shell_pane("b4tail")
         self.hook("session-end", {"hook_event_name": "SessionEnd", "session_id": SESSION})
         self.wait_for_screen(pane, "Claude session ended")
