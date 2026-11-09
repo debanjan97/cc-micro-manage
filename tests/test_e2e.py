@@ -249,6 +249,20 @@ class E2E(unittest.TestCase):
         self.assertFalse(os.listdir(self.state) and
                          [f for f in os.listdir(self.state) if f.startswith("shell-")])
 
+    def test_pane_survives_resizes_while_printing(self):
+        # SIGWINCH used to redraw mid-write ("reentrant call inside stdout") and kill the pane;
+        # ScreenResizeTest pins the cause down, this checks a busy pane under resizes end to end
+        self.bash("yes", "b7busy", CC_MICRO_MANAGE_LINGER="20")
+        pane = self.shell_pane("b7busy")
+        with open(self.shell_output("b7busy"), "a") as f:
+            for i in range(60):
+                f.write("".join(f"line {i}-{j} " + "x" * 100 + "\n" for j in range(80)))
+                f.flush()
+                self.tmux("resize-pane", "-t", pane, "-x", str(40 + (i % 7) * 12), "-y", str(20 + (i % 3) * 8))
+            f.write("\n[exited with code 0]\n")
+        self.wait_for_screen(pane, "exited with code 0", timeout=20)
+        self.assertEqual(self.errors_log(), "(none)")
+
     def test_failed_shell_says_so(self):
         self.bash("make test", "b2fail", CC_MICRO_MANAGE_LINGER="20")
         pane = self.shell_pane("b2fail")

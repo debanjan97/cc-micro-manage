@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 - **A resumed agent keeps its pane.** Claude Code can resume a finished subagent, for example when a background shell it was waiting on ends. If its pane was still open after finishing, a second pane used to open for it. Now the open pane picks the agent back up (`⏺ Resumed`) and carries on.
+- **Panes no longer crash when resized mid-output.** Resizing a pane (which happens whenever other panes open or close) redrew it straight from the signal handler. If that landed while the pane was writing, Python stopped with "reentrant call inside stdout" and the pane closed. The redraw now waits for a safe moment. A pane program that does crash now leaves its traceback in `<state dir>/errors.log`.
 
 ## [1.1.1] - 2026-11-08
 

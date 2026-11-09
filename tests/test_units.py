@@ -276,6 +276,40 @@ class RenderTest(unittest.TestCase):
         self.assertIn("  all good", out)
 
 
+class ScreenResizeTest(unittest.TestCase):
+    def test_resize_signal_never_draws_by_itself(self):
+        """SIGWINCH can arrive in the middle of a write to stdout; drawing from
+        the handler then dies with "reentrant call", so it must only take note."""
+        import pty
+        import signal
+        from ccmm import screen as screen_module
+        master, slave = pty.openpty()
+        os.set_blocking(master, False)
+        writes = []
+        fake_out = mock.Mock(write=lambda data: writes.append(data), flush=lambda: None)
+        tty = os.fdopen(slave, "r")
+        old_handler = signal.getsignal(signal.SIGWINCH)
+        old_stdout = sys.stdout
+        try:
+            with mock.patch.object(sys, "stdin", tty), mock.patch.object(sys, "__stdout__", fake_out), \
+                    mock.patch.object(screen_module.Screen, "_size", lambda self: (80, 24)):
+                scr = screen_module.Screen(lambda text: None)
+                self.assertTrue(scr.active)
+                writes.clear()
+                signal.getsignal(signal.SIGWINCH)(signal.SIGWINCH, None)    # as if mid-write
+                self.assertEqual(writes, [], "the handler drew to the screen")
+                self.assertTrue(scr.resize_pending)
+                scr.poll(0)                                                   # a safe point
+                self.assertFalse(scr.resize_pending)
+                self.assertTrue(writes, "the resize is applied at the next safe point")
+                scr.close()
+        finally:
+            sys.stdout = old_stdout
+            signal.signal(signal.SIGWINCH, old_handler)
+            tty.close()
+            os.close(master)
+
+
 class ShellTest(unittest.TestCase):
     def test_output_keeps_colours_and_drops_other_escapes(self):
         self.assertEqual(shell_viewer.clean("\x1b[32mok\x1b[0m\tdone"), "\x1b[32mok\x1b[0m      done")

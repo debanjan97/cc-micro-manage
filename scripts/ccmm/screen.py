@@ -37,6 +37,7 @@ class Screen:
         self.footer = [""]              # alternatives, widest first
         self.status = DEFAULT_STATUS
         self.input_enabled = True
+        self.resize_pending = False
         self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
         self.fd = self._terminal_input()
         if self.fd is None or self._size()[1] < MIN_ROWS:
@@ -44,7 +45,9 @@ class Screen:
         self._enter_raw_mode()
         self.active = True
         sys.stdout = self
-        signal.signal(signal.SIGWINCH, lambda *_: self._resize())
+        # only note it: redrawing inside the handler can land in the middle of a
+        # write to stdout, which Python refuses ("reentrant call") and the pane dies
+        signal.signal(signal.SIGWINCH, lambda *_: setattr(self, "resize_pending", True))
         self._resize()
 
     # ── setup and teardown ─────────────────────────────────────────────
@@ -94,6 +97,12 @@ class Screen:
     @property
     def _last_output_row(self):
         return self.rows - CHROME_ROWS
+
+    def _resize_if_pending(self):
+        """Apply a resize the SIGWINCH handler noted, now that it's safe to draw."""
+        if self.resize_pending and self.active:
+            self.resize_pending = False
+            self._resize()
 
     def _resize(self):
         self.cols, self.rows = self._size()
@@ -174,6 +183,7 @@ class Screen:
 
     # ── file-like, so print() works unchanged ──────────────────────────
     def write(self, data):
+        self._resize_if_pending()
         self.partial += data
         while "\n" in self.partial:
             line, _, self.partial = self.partial.partition("\n")
@@ -189,6 +199,7 @@ class Screen:
         if not self.active:
             time.sleep(timeout)
             return
+        self._resize_if_pending()
         ready, _, _ = select.select([self.fd], [], [], timeout)
         if not ready:
             return
